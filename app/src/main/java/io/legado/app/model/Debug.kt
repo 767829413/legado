@@ -14,15 +14,17 @@ import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.CoroutineScope
+import java.lang.ref.WeakReference
 import java.text.SimpleDateFormat
 import java.util.*
 
 object Debug {
-    private var callbackRef: java.lang.ref.WeakReference<Callback>? = null
+    /** WeakReference 防止 singleton 长期持有 Activity/Fragment 回调导致内存泄漏 */
+    private var callbackRef: WeakReference<Callback>? = null
     var callback: Callback?
         get() = callbackRef?.get()
         set(value) {
-            callbackRef = if (value != null) java.lang.ref.WeakReference(value) else null
+            callbackRef = value?.let { WeakReference(it) }
         }
     private var debugSource: String? = null
     private val tasks: CompositeCoroutine = CompositeCoroutine()

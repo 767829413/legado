@@ -21,6 +21,7 @@ import io.legado.app.utils.GSONStrict
 import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.StringUtils.wordCountFormat
+import io.legado.app.utils.RegexCache
 import io.legado.app.utils.fromJsonArray
 import kotlinx.coroutines.ensureActive
 import splitties.init.appCtx
@@ -30,18 +31,6 @@ import kotlin.coroutines.coroutineContext
  * 获取书籍列表
  */
 object BookList {
-
-    private val regexCache = object : LinkedHashMap<String, Regex>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Regex>?): Boolean {
-            return size > 50
-        }
-    }
-
-    private fun getCachedRegex(pattern: String): Regex {
-        return synchronized(regexCache) {
-            regexCache.getOrPut(pattern) { pattern.toRegex() }
-        }
-    }
 
     @Throws(Exception::class)
     suspend fun analyzeBookList(
@@ -73,7 +62,7 @@ object BookList {
         }
         if (isSearch) bookSource.bookUrlPattern?.let {
             coroutineContext.ensureActive()
-            if (baseUrl.matches(getCachedRegex(it))) {
+            if (baseUrl.matches(RegexCache.regex(it))) {
                 Debug.log(bookSource.bookSourceUrl, "≡链接为详情页")
                 getInfoItem(
                     bookSource,
