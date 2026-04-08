@@ -7,6 +7,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.utils.ACache
+import io.legado.app.utils.ConcurrentLruCache
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.fromJsonArray
@@ -22,20 +23,8 @@ import kotlinx.coroutines.withContext
  */
 
 private val kindSplitRegex = "(&&|\n)+".toRegex()
-private val mutexMap by lazy {
-    object : LinkedHashMap<String, Mutex>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Mutex>?): Boolean {
-            return size > 200
-        }
-    }
-}
-private val exploreKindsMap by lazy {
-    object : LinkedHashMap<String, List<ExploreKind>>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<ExploreKind>>?): Boolean {
-            return size > 200
-        }
-    }
-}
+private val mutexMap = ConcurrentLruCache<String, Mutex>(200) { Mutex() }
+private val exploreKindsMap = ConcurrentLruCache<String, List<ExploreKind>>(200) { emptyList() }
 private val aCache by lazy { ACache.get("explore") }
 
 private fun BookSource.getExploreKindsKey(): String {
@@ -52,20 +41,14 @@ suspend fun BookSourcePart.exploreKinds(): List<ExploreKind> {
 
 suspend fun BookSource.exploreKinds(): List<ExploreKind> {
     val exploreKindsKey = getExploreKindsKey()
-    synchronized(exploreKindsMap) {
-        exploreKindsMap[exploreKindsKey]?.let { return it }
-    }
+    exploreKindsMap.getOrNull(exploreKindsKey)?.let { return it }
     val exploreUrl = exploreUrl
     if (exploreUrl.isNullOrBlank()) {
         return emptyList()
     }
-    val mutex = synchronized(mutexMap) {
-        mutexMap[bookSourceUrl] ?: Mutex().also { mutexMap[bookSourceUrl] = it }
-    }
+    val mutex = mutexMap.get(bookSourceUrl)
     mutex.withLock {
-        synchronized(exploreKindsMap) {
-            exploreKindsMap[exploreKindsKey]?.let { return it }
-        }
+        exploreKindsMap.getOrNull(exploreKindsKey)?.let { return it }
         val kinds = arrayListOf<ExploreKind>()
         withContext(Dispatchers.IO) {
             kotlin.runCatching {
@@ -101,9 +84,7 @@ suspend fun BookSource.exploreKinds(): List<ExploreKind> {
                 it.printOnDebug()
             }
         }
-        synchronized(exploreKindsMap) {
-            exploreKindsMap[exploreKindsKey] = kinds
-        }
+        exploreKindsMap.put(exploreKindsKey, kinds)
         return kinds
     }
 }
@@ -112,9 +93,7 @@ suspend fun BookSourcePart.clearExploreKindsCache() {
     withContext(Dispatchers.IO) {
         val exploreKindsKey = getExploreKindsKey()
         aCache.remove(exploreKindsKey)
-        synchronized(exploreKindsMap) {
-            exploreKindsMap.remove(exploreKindsKey)
-        }
+        exploreKindsMap.remove(exploreKindsKey)
     }
 }
 
@@ -122,9 +101,7 @@ suspend fun BookSource.clearExploreKindsCache() {
     withContext(Dispatchers.IO) {
         val exploreKindsKey = getExploreKindsKey()
         aCache.remove(exploreKindsKey)
-        synchronized(exploreKindsMap) {
-            exploreKindsMap.remove(exploreKindsKey)
-        }
+        exploreKindsMap.remove(exploreKindsKey)
     }
 }
 

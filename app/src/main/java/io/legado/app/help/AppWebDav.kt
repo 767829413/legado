@@ -57,7 +57,9 @@ object AppWebDav {
 
     init {
         CoroutineScope(Dispatchers.IO).launch {
-            upConfig()
+            runCatching { upConfig() }.onFailure {
+                AppLog.put("AppWebDav init failed: ${it.localizedMessage}", it)
+            }
         }
     }
 
