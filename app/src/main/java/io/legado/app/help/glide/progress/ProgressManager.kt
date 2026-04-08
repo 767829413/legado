@@ -1,15 +1,17 @@
 package io.legado.app.help.glide.progress
 
 import io.legado.app.model.analyzeRule.AnalyzeUrl
-import java.util.concurrent.ConcurrentHashMap
+import io.legado.app.utils.ConcurrentLruCache
 
 /**
- * 进度监听器管理类
- * 加入图片加载进度监听，加入Https支持
+ * 图片加载进度监听管理。
+ * 使用 LRU 淘汰防止已取消/失败的加载残留 listener。
  */
 object ProgressManager {
-    private const val MAX_LISTENERS = 200
-    private val listenersMap = ConcurrentHashMap<String, OnProgressListener>()
+
+    private val listenersMap = ConcurrentLruCache<String, OnProgressListener>(200) {
+        throw IllegalStateException("ProgressManager should not auto-create listeners")
+    }
 
     val LISTENER = object : ProgressResponseBody.InternalProgressListener {
         override fun onProgress(
@@ -18,7 +20,8 @@ object ProgressManager {
             totalBytes: Long,
             isComplete: Boolean
         ) {
-            getProgressListener(url)?.let {
+            val cleanUrl = getUrlNoOption(url)
+            listenersMap.getOrNull(cleanUrl)?.let {
                 val percentage = when {
                     isComplete -> 100
                     totalBytes == -1L -> 0
@@ -26,7 +29,7 @@ object ProgressManager {
                 }
                 it.invoke(isComplete, percentage, bytesRead, totalBytes)
                 if (isComplete) {
-                    removeListener(url)
+                    listenersMap.remove(cleanUrl)
                 }
             }
         }
@@ -34,28 +37,15 @@ object ProgressManager {
 
     fun addListener(url: String, listener: OnProgressListener) {
         if (url.isNotEmpty()) {
-            val url = getUrlNoOption(url)
-            if (listenersMap.size >= MAX_LISTENERS) {
-                val firstKey = listenersMap.keys().nextElement()
-                listenersMap.remove(firstKey)
-            }
-            listenersMap[url] = listener
-            listener.invoke(false, 0, 0, 0)
+            val cleanUrl = getUrlNoOption(url)
+            listenersMap.put(cleanUrl, listener)
+            listener.invoke(false, 1, 0, 0)
         }
     }
 
     fun removeListener(url: String) {
         if (url.isNotEmpty()) {
-            val url = getUrlNoOption(url)
-            listenersMap.remove(url)
-        }
-    }
-
-    fun getProgressListener(url: String): OnProgressListener? {
-        return if (url.isEmpty() || listenersMap.isEmpty()) {
-            null
-        } else {
-            listenersMap[url]
+            listenersMap.remove(getUrlNoOption(url))
         }
     }
 

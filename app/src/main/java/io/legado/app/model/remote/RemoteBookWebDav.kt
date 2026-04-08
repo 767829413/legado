@@ -13,6 +13,7 @@ import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavFile
 import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.model.localBook.LocalBook
+import io.legado.app.constant.AppLog
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.isContentScheme
 import kotlinx.coroutines.CoroutineScope
@@ -27,7 +28,11 @@ class RemoteBookWebDav(
 
     init {
         CoroutineScope(Dispatchers.IO).launch {
-            WebDav(rootBookUrl, authorization).makeAsDir()
+            runCatching {
+                WebDav(rootBookUrl, authorization).makeAsDir()
+            }.onFailure {
+                AppLog.put("RemoteBookWebDav makeAsDir failed: ${it.localizedMessage}", it)
+            }
         }
     }
 

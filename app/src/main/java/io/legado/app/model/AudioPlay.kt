@@ -51,6 +51,7 @@ object AudioPlay : CoroutineScope by MainScope() {
 
     var playMode = PlayMode.LIST_END_STOP
     var status = Status.STOP
+    /** WeakReference 防止 singleton 泄漏 Activity/Service */
     private var activityContext: WeakReference<Context>? = null
     private var serviceContext: WeakReference<Context>? = null
     private val context: Context get() = activityContext?.get() ?: serviceContext?.get() ?: appCtx

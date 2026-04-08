@@ -1,26 +1,14 @@
 package io.legado.app.model.analyzeRule
 
 import androidx.annotation.Keep
-import java.util.regex.Pattern
+import io.legado.app.utils.RegexCache
 
 @Keep
 object AnalyzeByRegex {
 
-    private val patternCache = object : LinkedHashMap<String, Pattern>(32, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pattern>?): Boolean {
-            return size > 100
-        }
-    }
-
-    private fun getCachedPattern(regex: String): Pattern {
-        return synchronized(patternCache) {
-            patternCache.getOrPut(regex) { Pattern.compile(regex) }
-        }
-    }
-
     fun getElement(res: String, regs: Array<String>, index: Int = 0): List<String>? {
         var vIndex = index
-        val resM = getCachedPattern(regs[vIndex]).matcher(res)
+        val resM = RegexCache.pattern(regs[vIndex]).matcher(res)
         if (!resM.find()) {
             return null
         }
@@ -43,7 +31,7 @@ object AnalyzeByRegex {
 
     fun getElements(res: String, regs: Array<String>, index: Int = 0): List<List<String>> {
         var vIndex = index
-        val resM = getCachedPattern(regs[vIndex]).matcher(res)
+        val resM = RegexCache.pattern(regs[vIndex]).matcher(res)
         if (!resM.find()) {
             return arrayListOf()
         }

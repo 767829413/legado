@@ -16,6 +16,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.utils.RegexCache
 import io.legado.app.utils.runOnUI
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Runnable
@@ -48,8 +49,8 @@ class BackstageWebView(
     private val mHandler = Handler(Looper.getMainLooper())
     private var callback: Callback? = null
     private var mWebView: WebView? = null
-    private val compiledSourceRegex: Regex? = sourceRegex?.toRegex()
-    private val compiledOverrideUrlRegex: Regex? = overrideUrlRegex?.toRegex()
+    private val compiledSourceRegex: Regex? = sourceRegex?.let { RegexCache.regex(it) }
+    private val compiledOverrideUrlRegex: Regex? = overrideUrlRegex?.let { RegexCache.regex(it) }
 
     suspend fun getStrResponse(): StrResponse = withTimeout(60000L) {
         suspendCancellableCoroutine { block ->

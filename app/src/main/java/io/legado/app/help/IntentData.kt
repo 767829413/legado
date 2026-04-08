@@ -1,38 +1,32 @@
 package io.legado.app.help
 
+import io.legado.app.utils.ConcurrentLruCache
+
+/**
+ * Activity 间传递大对象的临时存储。
+ * 使用 LRU 淘汰防止无限增长（get 后立即移除条目）。
+ */
 object IntentData {
 
-    private const val MAX_SIZE = 50
-
-    private val bigData = object : LinkedHashMap<String, Any>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Any>?): Boolean {
-            return size > MAX_SIZE
-        }
+    private val bigData = ConcurrentLruCache<String, Any>(50) {
+        throw IllegalStateException("IntentData should not auto-create entries")
     }
 
-    @Synchronized
     fun put(key: String, data: Any?): String {
-        data?.let {
-            bigData[key] = data
-        }
+        data?.let { bigData.put(key, it) }
         return key
     }
 
-    @Synchronized
     fun put(data: Any?): String {
         val key = System.currentTimeMillis().toString()
-        data?.let {
-            bigData[key] = data
-        }
+        data?.let { bigData.put(key, it) }
         return key
     }
 
     @Suppress("UNCHECKED_CAST")
-    @Synchronized
     fun <T> get(key: String?): T? {
         if (key == null) return null
-        val data = bigData[key]
-        bigData.remove(key)
-        return data as? T
+        return bigData.remove(key) as? T
     }
+
 }
