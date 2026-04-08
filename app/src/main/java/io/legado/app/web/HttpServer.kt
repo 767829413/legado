@@ -13,6 +13,7 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.web.utils.AssetsWeb
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import okio.Pipe
 import okio.buffer
@@ -50,7 +51,7 @@ class HttpServer(port: Int) : NanoHTTPD(port) {
                     session.parseBody(files)
                     val postData = files["postData"]
 
-                    returnData = runBlocking {
+                    returnData = runBlocking(Dispatchers.IO) {
                         when (uri) {
                             "/saveBookSource" -> BookSourceController.saveSource(postData)
                             "/saveBookSources" -> BookSourceController.saveSources(postData)

@@ -2,6 +2,7 @@ package io.legado.app.lib.cronet
 
 import androidx.annotation.Keep
 import io.legado.app.utils.printOnDebug
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
@@ -45,7 +46,7 @@ class CronetCoroutineInterceptor(private val cookieJar: CookieJar) : Interceptor
 
             val newReq = builder.build()
             val timeout = chain.call().timeout().timeoutNanos() / 1000000
-            runBlocking() {
+            runBlocking(Dispatchers.IO) {
                 if (timeout > 0) {
                     withTimeout(timeout) {
                         proceedWithCronet(newReq, chain.call(), chain.readTimeoutMillis()).also { response ->

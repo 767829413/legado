@@ -26,6 +26,11 @@ object StringUtils {
     private val wordCountFormatter by lazy {
         DecimalFormat("#.#")
     }
+    private val chineseNumRegex = "^[〇零一二三四五六七八九壹贰叁肆伍陆柒捌玖]$".toRegex()
+    private val whitespaceRegex = "\\s+".toRegex()
+    private val containsNumberPattern: Pattern = Pattern.compile("[0-9]+")
+    private val isNumericPattern: Pattern = Pattern.compile("-?[0-9]+")
+    private val unicodeEscapePattern: Pattern = Pattern.compile("\\\\u(\\p{XDigit}{4})")
 
     private val chnMap: HashMap<Char, Int>
         get() {
@@ -157,7 +162,7 @@ object StringUtils {
         val cn = chNum.toCharArray()
 
         // "一零二五" 形式
-        if (cn.size > 1 && chNum.matches("^[〇零一二三四五六七八九壹贰叁肆伍陆柒捌玖]$".toRegex())) {
+        if (cn.size > 1 && chNum.matches(chineseNumRegex)) {
             for (i in cn.indices) {
                 cn[i] = (48 + ChnMap[cn[i]]!!).toChar()
             }
@@ -208,7 +213,7 @@ object StringUtils {
      */
     fun stringToInt(str: String?): Int {
         if (str != null) {
-            val num = fullToHalf(str).replace("\\s+".toRegex(), "")
+            val num = fullToHalf(str).replace(whitespaceRegex, "")
             return kotlin.runCatching {
                 Integer.parseInt(num)
             }.getOrElse {
@@ -222,18 +227,14 @@ object StringUtils {
      * 是否包含数字
      */
     fun isContainNumber(company: String): Boolean {
-        val p = Pattern.compile("[0-9]+")
-        val m = p.matcher(company)
-        return m.find()
+        return containsNumberPattern.matcher(company).find()
     }
 
     /**
      * 是否数字
      */
     fun isNumeric(str: String): Boolean {
-        val pattern = Pattern.compile("-?[0-9]+")
-        val isNum = pattern.matcher(str)
-        return isNum.matches()
+        return isNumericPattern.matcher(str).matches()
     }
 
     fun wordCountFormat(words: Int): String {
@@ -302,8 +303,7 @@ object StringUtils {
      */
     fun removeUTFCharacters(data: String?): String? {
         if (data == null) return null
-        val p = Pattern.compile("\\\\u(\\p{XDigit}{4})")
-        val m = p.matcher(data)
+        val m = unicodeEscapePattern.matcher(data)
         val buf = StringBuffer(data.length)
         while (m.find()) {
             val ch = Integer.parseInt(m.group(1)!!, 16).toChar().toString()

@@ -8,6 +8,7 @@ import com.script.rhino.runScriptWithContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+private val kindSplitRegex = "(&&|\n)+".toRegex()
 private val aCache by lazy { ACache.get("rssSortUrl") }
 
 private fun RssSource.getSortUrlsKey(): String {
@@ -36,7 +37,7 @@ suspend fun RssSource.sortUrls(): List<Pair<String, String>> {
                         aCache.put(sortUrlsKey, str)
                     }
                 }
-                str?.split("(&&|\n)+".toRegex())?.forEach { sort ->
+                str?.split(kindSplitRegex)?.forEach { sort ->
                     val name = sort.substringBefore("::")
                     val url = sort.substringAfter("::", "")
                     if (url.isNotEmpty()) {

@@ -44,6 +44,7 @@ import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -89,6 +90,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         CustomLoadErrorHandlingPolicy()
     }
     private var speechRate: Int = AppConfig.speechRatePlay + 5
+    private var contentTypeRegexCache: Regex? = null
     private var downloadTask: Coroutine<*>? = null
     private var playIndexJob: Job? = null
     private var downloadErrorNo: Int = 0
@@ -286,7 +288,7 @@ class HttpReadAloudService : BaseReadAloudService(),
                     null
                 } else {
                     kotlin.runCatching {
-                        runBlocking(lifecycleScope.coroutineContext[Job]!!) {
+                        runBlocking(lifecycleScope.coroutineContext[Job]!! + Dispatchers.IO) {
                             getSpeakStream(httpTts, speakText)
                         }
                     }.onFailure {
@@ -347,7 +349,9 @@ class HttpReadAloudService : BaseReadAloudService(),
                     if (contentType == "application/json" || contentType.startsWith("text/")) {
                         throw NoStackTraceException(response.body.string())
                     } else if (ct?.isNotBlank() == true) {
-                        if (!contentType.matches(ct.toRegex())) {
+                        val ctRegex = contentTypeRegexCache
+                            ?: ct.toRegex().also { contentTypeRegexCache = it }
+                        if (!contentType.matches(ctRegex)) {
                             throw NoStackTraceException(
                                 "TTS服务器返回错误：" + response.body.string()
                             )

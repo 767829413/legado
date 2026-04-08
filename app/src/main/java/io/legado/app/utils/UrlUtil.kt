@@ -108,8 +108,8 @@ object UrlUtil {
             fileNames.forEach {
                 val fileName = it.substringAfter("=")
                     .trim()
-                    .replace("^\"".toRegex(), "")
-                    .replace("\"$".toRegex(), "")
+                    .replace(leadingQuoteRegex, "")
+                    .replace(trailingQuoteRegex, "")
                 if (it.contains("filename*")) {
                     val data = fileName.split("''")
                     names.add(URLDecoder.decode(data[1], data[0]))
@@ -148,6 +148,8 @@ object UrlUtil {
         }
     }
 
+    private val leadingQuoteRegex = "^\"".toRegex()
+    private val trailingQuoteRegex = "\"$".toRegex()
     private val fileSuffixRegex = Regex("^[a-z\\d]+$", RegexOption.IGNORE_CASE)
 
     /* 获取合法的文件后缀 */

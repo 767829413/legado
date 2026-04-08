@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentHashMap
  * 加入图片加载进度监听，加入Https支持
  */
 object ProgressManager {
+    private const val MAX_LISTENERS = 200
     private val listenersMap = ConcurrentHashMap<String, OnProgressListener>()
 
     val LISTENER = object : ProgressResponseBody.InternalProgressListener {
@@ -30,6 +31,10 @@ object ProgressManager {
     fun addListener(url: String, listener: OnProgressListener) {
         if (url.isNotEmpty()) {
             val url = getUrlNoOption(url)
+            if (listenersMap.size >= MAX_LISTENERS) {
+                val firstKey = listenersMap.keys().nextElement()
+                listenersMap.remove(firstKey)
+            }
             listenersMap[url] = listener
             listener.invoke(false, 1, 0, 0)
         }

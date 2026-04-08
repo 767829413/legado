@@ -111,7 +111,7 @@ interface JsExtensions : JsEncodeUtils {
      * 并发访问网络
      */
     fun ajaxAll(urlList: Array<String>): Array<StrResponse> {
-        return runBlocking(context) {
+        return runBlocking(context + IO) {
             urlList.asFlow().mapAsync(AppConfig.threadCount) { url ->
                 val analyzeUrl = AnalyzeUrl(
                     url,
@@ -171,7 +171,7 @@ interface JsExtensions : JsEncodeUtils {
         if (isMainThread) {
             error("webView must be called on a background thread")
         }
-        return runBlocking(context) {
+        return runBlocking(context + IO) {
             BackstageWebView(
                 url = url,
                 html = html,
@@ -189,7 +189,7 @@ interface JsExtensions : JsEncodeUtils {
         if (isMainThread) {
             error("webViewGetSource must be called on a background thread")
         }
-        return runBlocking(context) {
+        return runBlocking(context + IO) {
             BackstageWebView(
                 url = url,
                 html = html,
@@ -213,7 +213,7 @@ interface JsExtensions : JsEncodeUtils {
         if (isMainThread) {
             error("webViewGetOverrideUrl must be called on a background thread")
         }
-        return runBlocking(context) {
+        return runBlocking(context + IO) {
             BackstageWebView(
                 url = url,
                 html = html,

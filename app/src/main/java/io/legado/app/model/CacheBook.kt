@@ -187,6 +187,7 @@ object CacheBook {
             return count
         }
 
+    private const val MAX_SUCCESS_RECORDS = 5000
     val successDownloadSet = linkedSetOf<String>()
     val errorDownloadMap = hashMapOf<String, Int>()
 
@@ -253,6 +254,13 @@ object CacheBook {
             onDownloadSet.remove(chapter.index)
             successDownloadSet.add(chapter.primaryStr())
             errorDownloadMap.remove(chapter.primaryStr())
+            if (successDownloadSet.size > MAX_SUCCESS_RECORDS) {
+                val iter = successDownloadSet.iterator()
+                val excess = successDownloadSet.size - MAX_SUCCESS_RECORDS
+                repeat(excess) {
+                    if (iter.hasNext()) { iter.next(); iter.remove() }
+                }
+            }
         }
 
         @Synchronized

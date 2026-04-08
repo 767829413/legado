@@ -51,6 +51,7 @@ import io.legado.app.help.rhino.NativeBaseSource
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.storage.Backup
 import io.legado.app.model.BookCover
+import io.legado.app.model.ImageProvider
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.defaultSharedPreferences
@@ -129,6 +130,13 @@ class App : Application() {
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(AppContextWrapper.wrap(base))
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_RUNNING_LOW) {
+            ImageProvider.trimMemory()
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

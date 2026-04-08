@@ -33,19 +33,26 @@ class ContentProcessor private constructor(
         fun get(book: Book) = get(book.name, book.origin)
 
         fun get(bookName: String, bookOrigin: String): ContentProcessor {
-            val processorWr = processors[bookName + bookOrigin]
+            val key = bookName + bookOrigin
+            val processorWr = processors[key]
             var processor: ContentProcessor? = processorWr?.get()
             if (processor == null) {
                 processor = ContentProcessor(bookName, bookOrigin)
-                processors[bookName + bookOrigin] = WeakReference(processor)
+                processors[key] = WeakReference(processor)
+                cleanupStaleEntries()
             }
             return processor
         }
 
         fun upReplaceRules() {
+            cleanupStaleEntries()
             processors.forEach {
                 it.value.get()?.upReplaceRules()
             }
+        }
+
+        private fun cleanupStaleEntries() {
+            processors.entries.removeAll { it.value.get() == null }
         }
 
     }
@@ -146,7 +153,14 @@ class ContentProcessor private constructor(
             if (useReplace && book.getUseReplaceRule()) {
                 //替换
                 effectiveReplaceRules = arrayListOf()
-                mContent = mContent.lines().joinToString("\n") { it.trim() }
+                mContent = buildString(mContent.length) {
+                    var first = true
+                    for (line in mContent.lineSequence()) {
+                        if (!first) append('\n')
+                        append(line.trim())
+                        first = false
+                    }
+                }
                 getContentReplaceRules().forEach { item ->
                     if (item.pattern.isEmpty()) {
                         return@forEach
