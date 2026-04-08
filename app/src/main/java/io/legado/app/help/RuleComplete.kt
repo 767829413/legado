@@ -11,6 +11,8 @@ object RuleComplete {
     // 不能补全 存在js/json/{{xx}}的复杂情况
     private val notComplete = Regex("""^:|^##|\{\{|@js:|<js>|@Json:|\$\.""")
 
+    private val tailSplitRegex = """##|,\{""".toRegex()
+
     // 修正从图片获取信息
     private val fixImgInfo =
         Regex("""(?<=(^|tag\.|[\+/@>~| &]))img(?<at>(\[@?.+\]|\.[-\w]+)?)[@/]+text(\(\))?(?<seq>\&{2}|%%|\|{2}|$)""")
@@ -57,10 +59,10 @@ object RuleComplete {
         val imgText: String
 
         // 分离尾部规则
-        val regexSplit = rules.split("""##|,\{""".toRegex(), 2)
+        val regexSplit = rules.split(tailSplitRegex, 2)
         val cleanedRule = regexSplit[0]
         if (regexSplit.size > 1) {
-            splitStr = """##|,\{""".toRegex().find(rules)?.value ?: ""
+            splitStr = tailSplitRegex.find(rules)?.value ?: ""
             tailStr = splitStr + regexSplit[1]
         } else {
             tailStr = ""

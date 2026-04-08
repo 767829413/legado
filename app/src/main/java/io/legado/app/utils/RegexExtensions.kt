@@ -24,10 +24,11 @@ private val handler by lazy { buildMainHandler() }
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 fun CharSequence.replace(regex: Regex, replacement: String, timeout: Long): String {
+    check(!isMainThread) { "replace with timeout must not be called on the main thread" }
     val charSequence = this@replace
     val isJs = replacement.startsWith("@js:")
     val replacement1 = if (isJs) replacement.substring(4) else replacement
-    return runBlocking {
+    return runBlocking(IO) {
         suspendCancellableCoroutine { block ->
             Coroutine.async(executeContext = IO) {
                 val job = launch {

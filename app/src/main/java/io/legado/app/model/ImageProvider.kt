@@ -118,6 +118,13 @@ object ImageProvider {
         }
     }
 
+    fun trimMemory() {
+        val configuredSize = cacheSize
+        if (bitmapLruCache.maxSize() > configuredSize) {
+            bitmapLruCache.resize(configuredSize)
+        }
+    }
+
     /**
      *缓存网络图片和epub图片
      */

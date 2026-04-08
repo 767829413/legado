@@ -50,11 +50,29 @@ class OkHttpStreamFetcher(
     private var call: Call? = null
 
     companion object {
-        private val failUrl = hashSetOf<String>()
+        private const val MAX_FAIL_URL_SIZE = 200
+        private val failUrl = linkedSetOf<String>()
+
+        fun clearFailUrl() {
+            synchronized(failUrl) { failUrl.clear() }
+        }
+
+        private fun addFailUrl(url: String) {
+            synchronized(failUrl) {
+                if (failUrl.size >= MAX_FAIL_URL_SIZE) {
+                    val iterator = failUrl.iterator()
+                    if (iterator.hasNext()) {
+                        iterator.next()
+                        iterator.remove()
+                    }
+                }
+                failUrl.add(url)
+            }
+        }
     }
 
     override fun loadData(priority: Priority, callback: DataFetcher.DataCallback<in InputStream>) {
-        if (failUrl.contains(url.toStringUrl())) {
+        if (synchronized(failUrl) { failUrl.contains(url.toStringUrl()) }) {
             callback.onLoadFailed(NoStackTraceException("跳过加载失败的图片"))
             return
         }
@@ -116,7 +134,7 @@ class OkHttpStreamFetcher(
         responseBody = response.body
         if (!response.isSuccessful) {
             if (!manga) {
-                failUrl.add(url.toStringUrl())
+                addFailUrl(url.toStringUrl())
             }
             callback?.onLoadFailed(HttpException(response.message, response.code))
             return
@@ -149,7 +167,7 @@ class OkHttpStreamFetcher(
     private fun onStreamReady(inputStream: InputStream?) {
         if (inputStream == null) {
             if (!manga) {
-                failUrl.add(url.toStringUrl())
+                addFailUrl(url.toStringUrl())
             }
             callback?.onLoadFailed(NoStackTraceException("封面二次解密失败"))
         } else {

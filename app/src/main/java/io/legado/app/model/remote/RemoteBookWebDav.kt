@@ -15,7 +15,9 @@ import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.isContentScheme
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class RemoteBookWebDav(
     val rootBookUrl: String,
@@ -24,7 +26,7 @@ class RemoteBookWebDav(
 ) : RemoteBookManager() {
 
     init {
-        runBlocking {
+        CoroutineScope(Dispatchers.IO).launch {
             WebDav(rootBookUrl, authorization).makeAsDir()
         }
     }

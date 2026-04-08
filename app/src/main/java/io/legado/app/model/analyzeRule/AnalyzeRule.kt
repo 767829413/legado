@@ -30,6 +30,7 @@ import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.splitNotBlank
 import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.apache.commons.text.StringEscapeUtils
@@ -847,7 +848,7 @@ class AnalyzeRule(
         val bookSource = source as? BookSource
         val book = book as? Book
         if (bookSource == null || book == null) return
-        runBlocking(coroutineContext) {
+        runBlocking(coroutineContext + Dispatchers.IO) {
             withTimeout(1800000) {
                 WebBook.preciseSearchAwait(bookSource, book.name, book.author)
                     .getOrThrow().let {
@@ -869,7 +870,7 @@ class AnalyzeRule(
         val bookSource = source as? BookSource
         val book = book as? Book
         if (bookSource == null || book == null) return
-        runBlocking(coroutineContext) {
+        runBlocking(coroutineContext + Dispatchers.IO) {
             withTimeout(1800000) {
                 WebBook.getBookInfoAwait(bookSource, book, false)
             }

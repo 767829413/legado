@@ -50,7 +50,9 @@ import io.legado.app.utils.get
 import io.legado.app.utils.isJson
 import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.isJsonObject
+import io.legado.app.utils.isMainThread
 import io.legado.app.utils.isXml
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -478,7 +480,8 @@ class AnalyzeUrl(
         sourceRegex: String? = null,
         useWebView: Boolean = true,
     ): StrResponse {
-        return runBlocking(coroutineContext) {
+        check(!isMainThread) { "getStrResponse must not be called on the main thread" }
+        return runBlocking(coroutineContext + Dispatchers.IO) {
             getStrResponseAwait(jsStr, sourceRegex, useWebView)
         }
     }
@@ -531,7 +534,8 @@ class AnalyzeUrl(
     }
 
     fun getResponse(): Response {
-        return runBlocking(coroutineContext) {
+        check(!isMainThread) { "getResponse must not be called on the main thread" }
+        return runBlocking(coroutineContext + Dispatchers.IO) {
             getResponseAwait()
         }
     }
@@ -560,7 +564,8 @@ class AnalyzeUrl(
     }
 
     fun getByteArray(): ByteArray {
-        return runBlocking(coroutineContext) {
+        check(!isMainThread) { "getByteArray must not be called on the main thread" }
+        return runBlocking(coroutineContext + Dispatchers.IO) {
             getByteArrayAwait()
         }
     }
@@ -576,7 +581,8 @@ class AnalyzeUrl(
     }
 
     fun getInputStream(): InputStream {
-        return runBlocking(coroutineContext) {
+        check(!isMainThread) { "getInputStream must not be called on the main thread" }
+        return runBlocking(coroutineContext + Dispatchers.IO) {
             getInputStreamAwait()
         }
     }

@@ -28,9 +28,11 @@ import io.legado.app.utils.isJson
 import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.removePref
 import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
 import splitties.init.appCtx
 import java.io.File
 
@@ -43,6 +45,7 @@ object AppWebDav {
     private val exportsWebDavUrl get() = "${rootWebDavUrl}books/"
     private val bgWebDavUrl get() = "${rootWebDavUrl}background/"
 
+    @Volatile
     var authorization: Authorization? = null
         private set
 
@@ -53,7 +56,7 @@ object AppWebDav {
     val isJianGuoYun get() = rootWebDavUrl.startsWith(defaultWebDavUrl, true)
 
     init {
-        runBlocking {
+        CoroutineScope(Dispatchers.IO).launch {
             upConfig()
         }
     }

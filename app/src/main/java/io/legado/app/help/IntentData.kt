@@ -2,7 +2,13 @@ package io.legado.app.help
 
 object IntentData {
 
-    private val bigData: MutableMap<String, Any> = mutableMapOf()
+    private const val MAX_SIZE = 50
+
+    private val bigData = object : LinkedHashMap<String, Any>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Any>?): Boolean {
+            return size > MAX_SIZE
+        }
+    }
 
     @Synchronized
     fun put(key: String, data: Any?): String {
