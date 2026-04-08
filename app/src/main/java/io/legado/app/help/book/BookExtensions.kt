@@ -31,7 +31,6 @@ import splitties.init.appCtx
 import java.io.File
 import java.time.LocalDate
 import java.time.Period.between
-import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.max
 import kotlin.math.min
 
@@ -103,25 +102,28 @@ fun Book.contains(word: String?): Boolean {
 }
 
 private val localUriCache by lazy {
-    ConcurrentHashMap<String, Uri>()
+    object : LinkedHashMap<String, Uri>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Uri>?): Boolean {
+            return size > 100
+        }
+    }
 }
 
 fun Book.getLocalUri(): Uri {
     if (!isLocal) {
         throw NoStackTraceException("不是本地书籍")
     }
-    var uri = localUriCache[bookUrl]
-    if (uri != null) {
-        return uri
+    synchronized(localUriCache) {
+        localUriCache[bookUrl]?.let { return it }
     }
-    uri = if (bookUrl.isUri()) {
+    var uri = if (bookUrl.isUri()) {
         bookUrl.toUri()
     } else {
         Uri.fromFile(File(bookUrl))
     }
     //先检测uri是否有效,这个比较快
     uri.inputStream(appCtx).getOrNull()?.use {
-        localUriCache[bookUrl] = uri
+        synchronized(localUriCache) { localUriCache[bookUrl] = uri }
     }?.let {
         return uri
     }
@@ -138,8 +140,7 @@ fun Book.getLocalUri(): Uri {
         } else {
             val fileDoc = treeFileDoc.find(originName, 5, 100)
             if (fileDoc != null) {
-                localUriCache[bookUrl] = fileDoc.uri
-                //更新bookUrl 重启不用再找一遍
+                synchronized(localUriCache) { localUriCache[bookUrl] = fileDoc.uri }
                 bookUrl = fileDoc.toString()
                 save()
                 return fileDoc.uri
@@ -157,14 +158,14 @@ fun Book.getLocalUri(): Uri {
         val treeFileDoc = FileDoc.fromUri(treeUri, true)
         val fileDoc = treeFileDoc.find(originName, 5, 100)
         if (fileDoc != null) {
-            localUriCache[bookUrl] = fileDoc.uri
+            synchronized(localUriCache) { localUriCache[bookUrl] = fileDoc.uri }
             bookUrl = fileDoc.toString()
             save()
             return fileDoc.uri
         }
     }
 
-    localUriCache[bookUrl] = uri
+    synchronized(localUriCache) { localUriCache[bookUrl] = uri }
     return uri
 }
 
@@ -180,11 +181,11 @@ fun Book.getArchiveUri(): Uri? {
 }
 
 fun Book.cacheLocalUri(uri: Uri) {
-    localUriCache[bookUrl] = uri
+    synchronized(localUriCache) { localUriCache[bookUrl] = uri }
 }
 
 fun Book.removeLocalUriCache() {
-    localUriCache.remove(bookUrl)
+    synchronized(localUriCache) { localUriCache.remove(bookUrl) }
 }
 
 fun Book.getRemoteUrl(): String? {

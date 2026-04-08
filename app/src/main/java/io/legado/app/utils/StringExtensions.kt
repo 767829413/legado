@@ -71,11 +71,13 @@ fun String?.isXml(): Boolean =
         str.startsWith("<") && str.endsWith(">")
     } ?: false
 
+private val isTrueRegex = "(?i)^(false|no|not|0)$".toRegex()
+
 fun String?.isTrue(nullIsTrue: Boolean = false): Boolean {
     if (this.isNullOrBlank() || this == "null") {
         return nullIsTrue
     }
-    return !this.trim().matches("(?i)^(false|no|not|0)$".toRegex())
+    return !this.trim().matches(isTrueRegex)
 }
 
 fun String.isHex(): Boolean {
@@ -113,10 +115,10 @@ fun String?.memorySize(): Int {
 /**
  * 是否中文
  */
+private val chinesePattern: Pattern = Pattern.compile("[\u4e00-\u9fa5]")
+
 fun String.isChinese(): Boolean {
-    val p = Pattern.compile("[\u4e00-\u9fa5]")
-    val m = p.matcher(this)
-    return m.find()
+    return chinesePattern.matcher(this).find()
 }
 
 /**

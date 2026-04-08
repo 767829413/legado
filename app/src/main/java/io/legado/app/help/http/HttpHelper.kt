@@ -16,13 +16,16 @@ import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import java.net.InetSocketAddress
 import java.net.Proxy
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ThreadFactory
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
-private val proxyClientCache: ConcurrentHashMap<String, OkHttpClient> by lazy {
-    ConcurrentHashMap()
+private val proxyClientCache: LinkedHashMap<String, OkHttpClient> by lazy {
+    object : LinkedHashMap<String, OkHttpClient>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, OkHttpClient>?): Boolean {
+            return size > 20
+        }
+    }
 }
 
 val cookieJar by lazy {
@@ -146,8 +149,10 @@ fun getProxyClient(proxy: String? = null): OkHttpClient {
     if (proxy.isNullOrBlank()) {
         return okHttpClient
     }
-    proxyClientCache[proxy]?.let {
-        return it
+    synchronized(proxyClientCache) {
+        proxyClientCache[proxy]?.let {
+            return it
+        }
     }
     val r = Regex("(http|socks4|socks5)://(.*):(\\d{2,5})(@.*@.*)?")
     val ms = r.findAll(proxy)
@@ -177,7 +182,9 @@ fun getProxyClient(proxy: String? = null): OkHttpClient {
             }
         }
         val proxyClient = builder.build()
-        proxyClientCache[proxy] = proxyClient
+        synchronized(proxyClientCache) {
+            proxyClientCache[proxy] = proxyClient
+        }
         return proxyClient
     }
     return okHttpClient

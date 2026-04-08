@@ -7,6 +7,24 @@ import kotlin.math.min
 @Suppress("SameParameterValue", "RegExpRedundantEscape")
 object ContentHelp {
 
+    // pre-compiled regexes for reSegment (avoid per-call compilation)
+    private val RE_QUOT = "&quot;".toRegex()
+    private val RE_COLON_QUOTE = """[:：]['\"'\u2018\u201d\u201c]+""".toRegex()
+    private val RE_MULTI_QUOTE_NL = """[\"\u201d\u201c]+\s*[\"\u201d\u201c][\s\"\u201d\u201c]*""".toRegex()
+    private val RE_NL_SPACE = """\n(\s*)""".toRegex()
+    private val RE_CJK_SPACES = """[\u3000\s]+""".toRegex()
+    private val RE_CJK_SPACE = """[\u3000\s]""".toRegex()
+    private val RE_MULTI_QUOTE2 = """[\"\u201d\u201c]+\s*[\"\u201d\u201c]+""".toRegex()
+    private val RE_QUOTE_PUNCT_QUOTE = """[\"\u201d\u201c]+([？。！?!~])[\"\u201d\u201c]+""".toRegex()
+    private val RE_QUOTE_PUNCT_ANY = """[\"\u201d\u201c]+([？。！?!~])([^\"\u201d\u201c])""".toRegex()
+    private val RE_SAY_PERIOD = """([问说喊唱叫骂道着答])[\.。]""".toRegex()
+    private val RE_NEWLINE = "\n".toRegex()
+    private val RE_LEADING_SPACE = """^\s+""".toRegex()
+    private val RE_SPACE_QUOTES = """\s*[\"\u201d\u201c]+\s*[\"\u201d\u201c][\s\"\u201d\u201c]*""".toRegex()
+    private val RE_COLON_QUOTE_SPACE = """[:：][\u201c\u201d\"\s]+""".toRegex()
+    private val RE_NL_QUOTE_COMMA = """\n[\"\u201d\u201c]([^\n\"\u201d\u201c]+)([,:，：][\"\u201d\u201c])([^\n\"\u201d\u201c]+)""".toRegex()
+    private val RE_NL_SPACES = """\n(\s*)""".toRegex()
+
     /**
      * 段落重排算法入口。把整篇内容输入，连接错误的分段，再把每个段落调用其他方法重新切分
      *
@@ -18,10 +36,10 @@ object ContentHelp {
         var content1 = content
         val dict = makeDict(content1)
         var p = content1
-            .replace("&quot;".toRegex(), "“")
-            .replace("[:：]['\"‘”“]+".toRegex(), "：“")
-            .replace("[\"”“]+\\s*[\"”“][\\s\"”“]*".toRegex(), "”\n“")
-            .split("\n(\\s*)".toRegex()).toTypedArray()
+            .replace(RE_QUOT, "“")
+            .replace(RE_COLON_QUOTE, "：“")
+            .replace(RE_MULTI_QUOTE_NL, "”\n“")
+            .split(RE_NL_SPACE).toTypedArray()
 
         //初始化StringBuilder的长度,在原content的长度基础上做冗余
         var buffer = StringBuilder((content1.length * 1.15).toInt())
@@ -29,7 +47,7 @@ object ContentHelp {
         buffer.append("  ")
         if (chapterName.trim { it <= ' ' } != p[0].trim { it <= ' ' }) {
             // 去除段落内空格。unicode 3000 象形字间隔（中日韩符号和标点），不包含在\s内
-            buffer.append(p[0].replace("[\u3000\\s]+".toRegex(), ""))
+            buffer.append(p[0].replace(RE_CJK_SPACES, ""))
         }
 
         //如果原文存在分段错误，需要把段落重新黏合
@@ -42,21 +60,21 @@ object ContentHelp {
             }
             // 段落开头以外的地方不应该有空格
             // 去除段落内空格。unicode 3000 象形字间隔（中日韩符号和标点），不包含在\s内
-            buffer.append(p[i].replace("[\u3000\\s]".toRegex(), ""))
+            buffer.append(p[i].replace(RE_CJK_SPACE, ""))
         }
         //     预分段预处理
         //         ”“处理为”\n“。
         //         ”。“处理为”。\n“。不考虑“？”  “！”的情况。
         // ”。xxx处理为 ”。\n xxx
         p = buffer.toString()
-            .replace("[\"”“]+\\s*[\"”“]+".toRegex(), "”\n“")
-            .replace("[\"”“]+(？。！?!~)[\"”“]+".toRegex(), "”$1\n“")
-            .replace("[\"”“]+(？。！?!~)([^\"”“])".toRegex(), "”$1\n$2")
+            .replace(RE_MULTI_QUOTE2, "”\n“")
+            .replace(RE_QUOTE_PUNCT_QUOTE, "”$1\n“")
+            .replace(RE_QUOTE_PUNCT_ANY, "”$1\n$2")
             .replace(
-                "([问说喊唱叫骂道着答])[\\.。]".toRegex(),
+                RE_SAY_PERIOD,
                 "$1。\n"
             )
-            .split("\n".toRegex()).toTypedArray()
+            .split(RE_NEWLINE).toTypedArray()
         buffer = StringBuilder((content1.length * 1.15).toInt())
         for (s in p) {
             buffer.append("\n")
@@ -64,11 +82,11 @@ object ContentHelp {
         }
         buffer = reduceLength(buffer)
         content1 = (buffer.toString() //         处理章节头部空格和换行
-            .replaceFirst("^\\s+".toRegex(), "")
-            .replace("\\s*[\"”“]+\\s*[\"”“][\\s\"”“]*".toRegex(), "”\n“")
-            .replace("[:：][”“\"\\s]+".toRegex(), "：“")
-            .replace("\n[\"“”]([^\n\"“”]+)([,:，：][\"”“])([^\n\"“”]+)".toRegex(), "\n$1：“$3")
-            .replace("\n(\\s*)".toRegex(), "\n"))
+            .replaceFirst(RE_LEADING_SPACE, "")
+            .replace(RE_SPACE_QUOTES, "”\n“")
+            .replace(RE_COLON_QUOTE_SPACE, "：“")
+            .replace(RE_NL_QUOTE_COMMA, "\n$1：“$3")
+            .replace(RE_NL_SPACES, "\n"))
         return content1
     }
 
@@ -82,7 +100,7 @@ object ContentHelp {
      * @return
      */
     private fun reduceLength(str: StringBuilder): StringBuilder {
-        val p = str.toString().split("\n".toRegex()).toTypedArray()
+        val p = str.toString().split(RE_NEWLINE).toTypedArray()
         val l = p.size
         val b = BooleanArray(l)
         for (i in 0 until l) {
@@ -488,15 +506,15 @@ object ContentHelp {
         )
         //Pattern patten = Pattern.compile("(?<=[\"'”“])([^\n\"'”“]{1,16})(?=[\"'”“])");
         val matcher = patten.matcher(str)
-        val cache: MutableList<String> = ArrayList()
-        val dict: MutableList<String> = ArrayList()
+        val cache = HashSet<String>()
+        val dict = LinkedHashSet<String>()
         while (matcher.find()) {
             val word = matcher.group()
-            if (cache.contains(word)) {
-                if (!dict.contains(word)) dict.add(word)
-            } else cache.add(word)
+            if (!cache.add(word)) {
+                dict.add(word)
+            }
         }
-        return dict
+        return dict.toList()
     }
 
     /**

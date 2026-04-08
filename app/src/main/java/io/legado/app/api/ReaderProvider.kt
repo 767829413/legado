@@ -13,6 +13,7 @@ import com.google.gson.Gson
 import io.legado.app.api.controller.BookController
 import io.legado.app.api.controller.BookSourceController
 import io.legado.app.api.controller.RssSourceController
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -77,7 +78,7 @@ class ReaderProvider : ContentProvider() {
 
     override fun insert(uri: Uri, values: ContentValues?): Uri? {
         if (sMatcher.match(uri) < 0) return null
-        runBlocking {
+        runBlocking(Dispatchers.IO) {
             when (RequestCode.entries[sMatcher.match(uri)]) {
                 RequestCode.SaveBookSource -> values?.let {
                     BookSourceController.saveSource(values.getAsString(postBodyKey))

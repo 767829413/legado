@@ -18,7 +18,12 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 object Debug {
-    var callback: Callback? = null
+    private var callbackRef: java.lang.ref.WeakReference<Callback>? = null
+    var callback: Callback?
+        get() = callbackRef?.get()
+        set(value) {
+            callbackRef = if (value != null) java.lang.ref.WeakReference(value) else null
+        }
     private var debugSource: String? = null
     private val tasks: CompositeCoroutine = CompositeCoroutine()
     val debugMessageMap = HashMap<String, String>()
@@ -91,6 +96,7 @@ object Debug {
 
     fun finishChecking() {
         isChecking = false
+        debugTimeMap.clear()
     }
 
     fun getRespondTime(sourceUrl: String): Long {

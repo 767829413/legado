@@ -49,6 +49,7 @@ import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.isDataUrl
 import io.legado.app.utils.printOnDebug
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.apache.commons.text.StringEscapeUtils
 import splitties.init.appCtx
@@ -488,7 +489,7 @@ object LocalBook {
                 AppWebDav.authorization?.let { WebDav(webDavUrl, it) }
                     ?: throw WebDavException("Unexpected defaultBookWebDav")
             }
-            val inputStream = runBlocking {
+            val inputStream = runBlocking(Dispatchers.IO) {
                 webdav.downloadInputStream()
             }
             inputStream.use {

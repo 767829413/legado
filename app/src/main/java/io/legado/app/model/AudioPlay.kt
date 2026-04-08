@@ -1,6 +1,5 @@
 package io.legado.app.model
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import io.legado.app.R
@@ -27,8 +26,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancelChildren
 import splitties.init.appCtx
+import java.lang.ref.WeakReference
 
-@SuppressLint("StaticFieldLeak")
 @Suppress("unused")
 object AudioPlay : CoroutineScope by MainScope() {
     /**
@@ -52,9 +51,9 @@ object AudioPlay : CoroutineScope by MainScope() {
 
     var playMode = PlayMode.LIST_END_STOP
     var status = Status.STOP
-    private var activityContext: Context? = null
-    private var serviceContext: Context? = null
-    private val context: Context get() = activityContext ?: serviceContext ?: appCtx
+    private var activityContext: WeakReference<Context>? = null
+    private var serviceContext: WeakReference<Context>? = null
+    private val context: Context get() = activityContext?.get() ?: serviceContext?.get() ?: appCtx
     var callback: CallBack? = null
     var book: Book? = null
     var chapterSize = 0
@@ -404,12 +403,12 @@ object AudioPlay : CoroutineScope by MainScope() {
     }
 
     fun register(context: Context) {
-        activityContext = context
+        activityContext = WeakReference(context)
         callback = context as CallBack
     }
 
     fun unregister(context: Context) {
-        if (activityContext === context) {
+        if (activityContext?.get() === context) {
             activityContext = null
             callback = null
         }
@@ -417,7 +416,7 @@ object AudioPlay : CoroutineScope by MainScope() {
     }
 
     fun registerService(context: Context) {
-        serviceContext = context
+        serviceContext = WeakReference(context)
     }
 
     fun unregisterService() {

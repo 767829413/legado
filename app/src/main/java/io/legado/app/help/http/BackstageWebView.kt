@@ -48,6 +48,8 @@ class BackstageWebView(
     private val mHandler = Handler(Looper.getMainLooper())
     private var callback: Callback? = null
     private var mWebView: WebView? = null
+    private val compiledSourceRegex: Regex? = sourceRegex?.toRegex()
+    private val compiledOverrideUrlRegex: Regex? = overrideUrlRegex?.toRegex()
 
     suspend fun getStrResponse(): StrResponse = withTimeout(60000L) {
         suspendCancellableCoroutine { block ->
@@ -264,8 +266,8 @@ class BackstageWebView(
         }
 
         private fun shouldOverrideUrlLoading(requestUrl: String): Boolean {
-            overrideUrlRegex?.let {
-                if (requestUrl.matches(it.toRegex())) {
+            compiledOverrideUrlRegex?.let {
+                if (requestUrl.matches(it)) {
                     try {
                         val response = StrResponse(url!!, requestUrl)
                         callback?.onResult(response)
@@ -280,8 +282,8 @@ class BackstageWebView(
         }
 
         override fun onLoadResource(view: WebView, resUrl: String) {
-            sourceRegex?.let {
-                if (resUrl.matches(it.toRegex())) {
+            compiledSourceRegex?.let {
+                if (resUrl.matches(it)) {
                     try {
                         val response = StrResponse(url!!, resUrl)
                         callback?.onResult(response)

@@ -20,7 +20,16 @@ object LifecycleHelp : Application.ActivityLifecycleCallbacks {
     private var appFinishedListener: (() -> Unit)? = null
 
     fun activitySize(): Int {
+        cleanupStaleActivities()
         return activities.size
+    }
+
+    private fun cleanupStaleActivities() {
+        activities.removeAll { it.get() == null }
+    }
+
+    private fun cleanupStaleServices() {
+        services.removeAll { it.get() == null }
     }
 
     /**
@@ -92,12 +101,14 @@ object LifecycleHelp : Application.ActivityLifecycleCallbacks {
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
         LogUtils.d(TAG, "${activity::class.simpleName} onCreate")
+        cleanupStaleActivities()
         activities.add(WeakReference(activity))
     }
 
     @Synchronized
     fun onServiceCreate(service: BaseService) {
         LogUtils.d(TAG, "${service::class.simpleName} onCreate")
+        cleanupStaleServices()
         services.add(WeakReference(service))
     }
 

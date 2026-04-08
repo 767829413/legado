@@ -12,6 +12,7 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonObject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.mozilla.javascript.Scriptable
 import org.mozilla.javascript.ScriptableObject
@@ -51,7 +52,7 @@ object SharedJsScope {
                         val fileName = MD5Utils.md5Encode(value)
                         var js = aCache.getAsString(fileName)
                         if (js == null) {
-                            js = runBlocking {
+                            js = runBlocking(Dispatchers.IO) {
                                 okHttpClient.newCallStrResponse {
                                     url(value)
                                 }.body
