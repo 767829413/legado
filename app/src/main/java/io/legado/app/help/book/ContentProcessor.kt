@@ -202,16 +202,14 @@ class ContentProcessor private constructor(
             mContent = mContent.replace('\u00A0', ' ')
         }
         val contents = arrayListOf<String>()
-        mContent.split("\n").forEach { str ->
-            val paragraph = str.trim {
-                it.code <= 0x20 || it == '　'
-            }
-            if (paragraph.isNotEmpty()) {
-                if (contents.isEmpty() && includeTitle) {
-                    contents.add(paragraph)
-                } else {
-                    contents.add("${ReadBookConfig.paragraphIndent}$paragraph")
-                }
+        val indent = ReadBookConfig.paragraphIndent
+        for (line in mContent.lineSequence()) {
+            val paragraph = line.trim { it.code <= 0x20 || it == '　' }
+            if (paragraph.isEmpty()) continue
+            if (contents.isEmpty() && includeTitle) {
+                contents.add(paragraph)
+            } else {
+                contents.add(indent + paragraph)
             }
         }
         return BookContent(sameTitleRemoved, contents, effectiveReplaceRules)

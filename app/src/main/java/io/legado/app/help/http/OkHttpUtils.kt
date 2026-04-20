@@ -78,20 +78,19 @@ suspend fun Call.await(): Response = suspendCancellableCoroutine { block ->
 
 fun ResponseBody.text(encode: String? = null): String {
     val responseBytes = Utf8BomUtils.removeUTF8BOM(bytes())
-    var charsetName: String? = encode
+    // 优先级: 显式 encode -> HTTP Content-Type -> HTML 内容嗅探 -> UTF-8
+    // 任意一级如果给出非法 charset 名(常见于书源规则手抖), 都静默回退到下一级
+    val charset = encode?.toCharsetOrNull()
+        ?: contentType()?.charset()
+        ?: EncodingDetect.getHtmlEncode(responseBytes).toCharsetOrNull()
+        ?: Charsets.UTF_8
+    return String(responseBytes, charset)
+}
 
-    charsetName?.let {
-        return String(responseBytes, Charset.forName(charsetName))
-    }
-
-    //根据http头判断
-    contentType()?.charset()?.let { charset ->
-        return String(responseBytes, charset)
-    }
-
-    //根据内容判断
-    charsetName = EncodingDetect.getHtmlEncode(responseBytes)
-    return String(responseBytes, Charset.forName(charsetName))
+private fun String.toCharsetOrNull(): Charset? {
+    val name = trim()
+    if (name.isEmpty()) return null
+    return runCatching { Charset.forName(name) }.getOrNull()
 }
 
 fun ResponseBody.decompressed(): ResponseBody {
