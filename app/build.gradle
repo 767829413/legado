@@ -96,7 +96,9 @@ android {
 
             applicationIdSuffix '.custom'
             versionNameSuffix 'custom'
-            minifyEnabled false
+            // 个人自用包: 当 Release 跑, 开启混淆与资源裁剪以贴近线上体积/性能
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro', 'cronet-proguard-rules.pro'
         }
     }

@@ -45,6 +45,10 @@ class TextChapterLayout(
     private val bookContent: BookContent,
 ) {
 
+    companion object {
+        private const val LAYOUT_PAGE_BUFFER = 16
+    }
+
     @Volatile
     private var listener: LayoutProgressListener? = textChapter
 
@@ -94,7 +98,12 @@ class TextChapterLayout(
 
     var exception: Throwable? = null
 
-    var channel = Channel<TextPage>(Channel.UNLIMITED)
+    /**
+     * 排版好的页面通过 channel 推给消费者。
+     * 容量必须有界, 否则长章节会一次性缓存几十上百个 TextPage 造成内存峰值。
+     * 16 足以让消费者(主线程渲染/预加载)平滑领先, 同时反压排版协程。
+     */
+    var channel = Channel<TextPage>(LAYOUT_PAGE_BUFFER)
 
 
     init {
@@ -139,7 +148,7 @@ class TextChapterLayout(
         listener = null
     }
 
-    private fun onPageCompleted() {
+    private suspend fun onPageCompleted() {
         val textPage = pendingTextPage
         textPage.index = textPages.size
         textPage.chapterIndex = bookChapter.index
@@ -152,7 +161,9 @@ class TextChapterLayout(
         textPage.upLinesPosition()
         textPage.upRenderHeight()
         textPages.add(textPage)
-        channel.trySend(textPage)
+        // 有界 channel: 用 send 取得反压, 消费方未跟上时排版协程会挂起,
+        // 既避免内存堆积, 又保证不丢页(trySend 在满时会丢失数据)。
+        channel.send(textPage)
         try {
             listener?.onLayoutPageCompleted(textPages.lastIndex, textPage)
         } catch (e: Exception) {
