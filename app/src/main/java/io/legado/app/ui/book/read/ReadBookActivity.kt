@@ -1622,6 +1622,11 @@ class ReadBookActivity : BaseReadBookActivity(),
         if (!ReadBook.inBookshelf && !isChangingConfigurations) {
             viewModel.removeFromBookshelf(null)
         }
+        // 真实退出阅读时释放章节持有的 native 资源 (CanvasRecorder/RenderNode)。
+        // 旋屏等配置变化会立刻重建 Activity 复用同一份章节缓存, 此时不能清。
+        if (!isChangingConfigurations) {
+            ReadBook.clearTextChapter()
+        }
         if (!BuildConfig.DEBUG) {
             Backup.autoBack(this)
         }
