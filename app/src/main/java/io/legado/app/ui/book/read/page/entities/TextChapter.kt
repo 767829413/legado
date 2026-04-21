@@ -308,6 +308,24 @@ data class TextChapter(
         listener = null
     }
 
+    /**
+     * 释放本章持有的 native 资源 (CanvasRecorder / RenderNode) 并取消未完成的排版。
+     *
+     * 章节切换或退出阅读后, 离开 prev/cur/next 三窗口的章节再不会被访问,
+     * 必须显式回收, 否则 RenderNode 等 native 资源只能等 GC 触发 finalize,
+     * 长时间阅读会让 native heap 持续上涨, 引发频繁 GC 卡顿乃至 OOM。
+     *
+     * 调用后本章视为已废弃, 调用方必须保证不再读取 pages / paragraphs。
+     * 全局共享的 [emptyTextChapter] 仍可能被其他对象引用, 不予回收。
+     */
+    fun recycle() {
+        if (this === emptyTextChapter) return
+        cancelLayout()
+        for (i in textPages.indices) {
+            textPages[i].recycleRecorders()
+        }
+    }
+
     companion object {
         val emptyTextChapter = TextChapter(
             BookChapter(), -1, "emptyTextChapter", -1,

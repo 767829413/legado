@@ -139,13 +139,17 @@ object ReadBook : CoroutineScope by MainScope() {
             durChapterPos = book.durChapterPos
             clearTextChapter()
         }
-        if (curTextChapter?.isCompleted == false) {
+        // 丢弃尚未完成排版的章节: 同样要 recycle, 取消其 layout 协程并释放已生成的部分页
+        curTextChapter?.takeIf { !it.isCompleted }?.let {
+            recycleChapter(it)
             curTextChapter = null
         }
-        if (nextTextChapter?.isCompleted == false) {
+        nextTextChapter?.takeIf { !it.isCompleted }?.let {
+            recycleChapter(it)
             nextTextChapter = null
         }
-        if (prevTextChapter?.isCompleted == false) {
+        prevTextChapter?.takeIf { !it.isCompleted }?.let {
+            recycleChapter(it)
             prevTextChapter = null
         }
         callBack?.upMenuView()
@@ -223,9 +227,22 @@ object ReadBook : CoroutineScope by MainScope() {
 
     fun clearTextChapter() {
         clearExpiredChapterLoadingJob(true)
+        recycleChapter(prevTextChapter)
+        recycleChapter(curTextChapter)
+        recycleChapter(nextTextChapter)
         prevTextChapter = null
         curTextChapter = null
         nextTextChapter = null
+    }
+
+    /**
+     * 回收离开 prev/cur/next 三窗口的章节, 释放其 native 资源。
+     * 章节滑窗 (next/prev) 时, 被挤出窗口的那一章必须在覆盖前回收,
+     * 否则其 CanvasRecorder/RenderNode 只能等 GC, 长读会让 native heap 持续上涨。
+     * null / 共享单例 emptyTextChapter 是 no-op。
+     */
+    private fun recycleChapter(chapter: TextChapter?) {
+        chapter?.recycle()
     }
 
     fun clearSearchResult() {
@@ -336,6 +353,7 @@ object ReadBook : CoroutineScope by MainScope() {
             durChapterPos = 0
             durChapterIndex++
             clearExpiredChapterLoadingJob()
+            recycleChapter(prevTextChapter)
             prevTextChapter = curTextChapter
             curTextChapter = nextTextChapter
             nextTextChapter = null
@@ -367,6 +385,7 @@ object ReadBook : CoroutineScope by MainScope() {
             durChapterPos = 0
             durChapterIndex++
             clearExpiredChapterLoadingJob()
+            recycleChapter(prevTextChapter)
             prevTextChapter = curTextChapter
             curTextChapter = nextTextChapter
             nextTextChapter = null
@@ -399,6 +418,7 @@ object ReadBook : CoroutineScope by MainScope() {
             durChapterPos = if (toLast) prevTextChapter?.lastReadLength ?: Int.MAX_VALUE else 0
             durChapterIndex--
             clearExpiredChapterLoadingJob()
+            recycleChapter(nextTextChapter)
             nextTextChapter = curTextChapter
             curTextChapter = prevTextChapter
             prevTextChapter = null
