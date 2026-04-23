@@ -28,6 +28,8 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import splitties.init.appCtx
 import java.util.concurrent.Executors
@@ -44,8 +46,10 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
     /**
      * 已合并的搜索结果, key = 书名+作者, 用 LinkedHashMap 保持首次出现顺序,
      * 同一本书后续命中只追加 origin, 整个合并过程为 O(M)。
+     * 旧 searchJob 取消后短暂窗口内仍可能并发写, 用 mergeMutex 兜底。
      */
     private val mergedBooks = LinkedHashMap<String, SearchBook>()
+    private val mergeMutex = Mutex()
     private var searchJob: Job? = null
     private var workingState = MutableStateFlow(true)
 
@@ -59,7 +63,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
             .newFixedThreadPool(min(threadCount, AppConst.MAX_THREAD)).asCoroutineDispatcher()
     }
 
-    fun search(searchId: Long, key: String) {
+    suspend fun search(searchId: Long, key: String) {
         if (searchId != mSearchId) {
             if (key.isEmpty()) {
                 return
@@ -68,7 +72,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
             if (mSearchId != 0L) {
                 close()
             }
-            mergedBooks.clear()
+            mergeMutex.withLock { mergedBooks.clear() }
             bookSourceParts = callBack.getSearchScope().getBookSourceParts()
             if (bookSourceParts.isEmpty()) {
                 callBack.onSearchCancel(NoStackTraceException("启用书源为空"))
@@ -78,6 +82,10 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
             searchPage = 1
             initSearchPool()
         } else {
+            // 加载更多: 上一页还在跑就直接忽略, 防止 searchJob 被覆盖、mergedBooks 被并发改写
+            if (searchJob?.isActive == true) {
+                return
+            }
             searchPage++
         }
         startSearch()
@@ -117,11 +125,18 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                             .onFailure { AppLog.put("搜索结果落库失败\n${it.localizedMessage}", it) }
                     }
                 }
-                mergeItems(items, precision)
                 currentCoroutineContext().ensureActive()
-                callBack.onSearchSuccess(buildSortedResult(precision))
+                val result = mergeMutex.withLock {
+                    mergeItems(items, precision)
+                    buildSortedResult(precision)
+                }
+                currentCoroutineContext().ensureActive()
+                callBack.onSearchSuccess(result)
             }.onCompletion {
-                if (it == null) callBack.onSearchFinish(mergedBooks.isEmpty(), hasMore)
+                if (it == null) {
+                    val isEmpty = mergeMutex.withLock { mergedBooks.isEmpty() }
+                    callBack.onSearchFinish(isEmpty, hasMore)
+                }
             }.catch {
                 AppLog.put("书源搜索出错\n${it.localizedMessage}", it)
             }.collect()

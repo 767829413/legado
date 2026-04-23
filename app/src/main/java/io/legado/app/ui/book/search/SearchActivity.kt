@@ -91,6 +91,9 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     private var precisionSearchMenuItem: MenuItem? = null
     private var isManualStopSearch = false
 
+    // 触底加载防抖: isSearchLiveData.postValue 是异步的, 用同步标志去重避免 onScrolled 风暴
+    private var loadMoreRequested = false
+
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.llInputHelp.setBackgroundColor(backgroundColor)
         initRecyclerView()
@@ -299,6 +302,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             if (it) {
                 startSearch()
             } else {
+                loadMoreRequested = false
                 searchFinally()
             }
         }
@@ -343,13 +347,14 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
      * 滚动到底部事件
      */
     private fun scrollToBottom() {
-        if (isManualStopSearch) {
+        if (isManualStopSearch || loadMoreRequested) {
             return
         }
         if (viewModel.isSearchLiveData.value == false
             && viewModel.searchKey.isNotEmpty()
             && viewModel.hasMore
         ) {
+            loadMoreRequested = true
             viewModel.search("")
         }
     }

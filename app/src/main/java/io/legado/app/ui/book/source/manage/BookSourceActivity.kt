@@ -17,6 +17,7 @@ import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.ItemTouchHelper
+import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.snackbar.Snackbar
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
@@ -648,19 +649,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
         checkMessageRefreshJob = lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 while (isActive) {
-                    if (lastItem == 0) {
-                        adapter.notifyItemRangeChanged(
-                            0,
-                            adapter.itemCount,
-                            bundleOf(Pair("checkSourceMessage", null))
-                        )
-                    } else {
-                        adapter.notifyItemRangeChanged(
-                            firstItem,
-                            lastItem + 1,
-                            bundleOf(Pair("checkSourceMessage", null))
-                        )
-                    }
+                    refreshCheckMessageVisibleRange(firstItem, lastItem)
                     if (!Debug.isChecking) {
                         checkMessageRefreshJob?.cancel()
                     }
@@ -668,6 +657,30 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                 }
             }
         }
+    }
+
+    /**
+     * 仅刷新当前可见的项. 校验进度从 Debug.debugMessageMap 全局读取,
+     * 离屏的项滚回来时 onBind 会自动取最新, 不必每 300ms 整表 range refresh.
+     */
+    private fun refreshCheckMessageVisibleRange(firstItem: Int, lastItem: Int) {
+        val itemCount = adapter.itemCount
+        if (itemCount == 0) return
+        val lm = binding.recyclerView.layoutManager as? LinearLayoutManager
+        val visibleFirst = lm?.findFirstVisibleItemPosition() ?: 0
+        val visibleLast = lm?.findLastVisibleItemPosition() ?: (itemCount - 1)
+        if (visibleFirst < 0 || visibleLast < 0) return
+        // 校验范围: lastItem == 0 视为整表(恢复校验时未知具体范围), 否则使用 [firstItem, lastItem].
+        val rangeStart = if (lastItem == 0) 0 else firstItem
+        val rangeEnd = if (lastItem == 0) itemCount - 1 else lastItem
+        val start = maxOf(visibleFirst, rangeStart)
+        val end = minOf(visibleLast, rangeEnd)
+        if (start > end) return
+        adapter.notifyItemRangeChanged(
+            start,
+            end - start + 1,
+            bundleOf(Pair("checkSourceMessage", null))
+        )
     }
 
     /**
