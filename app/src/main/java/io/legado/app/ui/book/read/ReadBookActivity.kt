@@ -1614,6 +1614,8 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun onDestroy() {
         super.onDestroy()
+        // screenOffRunnable 通过 handler.postDelayed 投递, 退出时未清会持有 Activity 引用直到延时到达.
+        handler.removeCallbacks(screenOffRunnable)
         tts?.clearTts()
         textActionMenu.dismiss()
         popupAction.dismiss()
