@@ -11,7 +11,6 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.viewbinding.ViewBinding
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.utils.buildMainHandler
-import io.legado.app.utils.withTimeoutOrNullAsync
 import kotlinx.coroutines.ensureActive
 import splitties.views.onLongClick
 import java.util.Collections
@@ -155,17 +154,14 @@ abstract class RecyclerAdapter<ITEM, VB : ViewBinding>(protected val context: Co
             }
             diffJob?.cancel()
             diffJob = Coroutine.async {
-                val diffResult = if (skipDiff) withTimeoutOrNullAsync(500L) {
-                    DiffUtil.calculateDiff(callback, itemsSize < 2000)
-                } else {
-                    DiffUtil.calculateDiff(callback, itemsSize < 2000)
-                }
+                // 始终在后台跑完 Diff, 上一次未完成的 Diff 已被 cancel.
+                // 历史上这里有 500ms 超时 + 退化为 notifyDataSetChanged 的兜底,
+                // 但在几千条书源的场景下整表重绘比慢一点的 Diff 更糟糕(滚动位置丢失、整表抖动),
+                // 故移除该兜底; skipDiff 现仅用于关闭 detectMoves 加速大列表 Diff.
+                val detectMoves = !skipDiff && itemsSize < 2000
+                val diffResult = DiffUtil.calculateDiff(callback, detectMoves)
                 ensureActive()
                 handler.post {
-                    if (diffResult == null) {
-                        setItems(items)
-                        return@post
-                    }
                     if (this@RecyclerAdapter.items.isNotEmpty()) {
                         this@RecyclerAdapter.items.clear()
                     }
