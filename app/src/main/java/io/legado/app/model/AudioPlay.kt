@@ -268,7 +268,7 @@ object AudioPlay : CoroutineScope by MainScope() {
     }
 
     fun skipTo(index: Int) {
-        Coroutine.async {
+        Coroutine.async(this) {
             stopPlay()
             if (index in 0..<simulatedChapterSize) {
                 durChapterIndex = index
@@ -281,7 +281,7 @@ object AudioPlay : CoroutineScope by MainScope() {
     }
 
     fun prev() {
-        Coroutine.async {
+        Coroutine.async(this) {
             stopPlay()
             if (durChapterIndex > 0) {
                 durChapterIndex -= 1
@@ -359,7 +359,7 @@ object AudioPlay : CoroutineScope by MainScope() {
 
     fun saveRead() {
         val book = book ?: return
-        Coroutine.async {
+        Coroutine.async(this) {
             book.lastCheckCount = 0
             book.durChapterTime = System.currentTimeMillis()
             val chapterChanged = book.durChapterIndex != durChapterIndex
@@ -382,7 +382,7 @@ object AudioPlay : CoroutineScope by MainScope() {
      */
     fun saveDurChapter(audioSize: Long) {
         val chapter = durChapter ?: return
-        Coroutine.async {
+        Coroutine.async(this) {
             durAudioSize = audioSize.toInt()
             chapter.end = audioSize
             appDb.bookChapterDao.update(chapter)

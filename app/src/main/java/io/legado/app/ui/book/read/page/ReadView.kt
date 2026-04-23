@@ -493,6 +493,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
      * 销毁事件
      */
     fun onDestroy() {
+        // 页面销毁时清掉延迟任务, 防止 Activity 已退出还触发长按导致的状态/引用泄漏.
+        removeCallbacks(longPressRunnable)
         pageDelegate?.onDestroy()
         curPage.cancelSelect()
         invalidateTextPage()
