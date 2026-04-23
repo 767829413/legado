@@ -55,6 +55,10 @@ abstract class PageDelegate(protected val readView: ReadView) {
 
     private var selectedOnDown = false
 
+    // 同一帧内合并多次 setBitmap; ContentTextView.preRenderPage 高频触发时
+    // 若不去重, 横翻动画过程中会反复对全 PageView 进行 draw/screenshot, 主线程明显卡顿.
+    private var pendingSetBitmap = false
+
     init {
         curPage.resetPageOffset()
     }
@@ -191,12 +195,14 @@ abstract class PageDelegate(protected val readView: ReadView) {
     }
 
     fun postInvalidate() {
-        if (isStarted && isRunning && this is HorizontalPageDelegate) {
-            readView.post {
-                if (isStarted && isRunning) {
-                    setBitmap()
-                    readView.invalidate()
-                }
+        if (!isStarted || !isRunning || this !is HorizontalPageDelegate) return
+        if (pendingSetBitmap) return
+        pendingSetBitmap = true
+        readView.post {
+            pendingSetBitmap = false
+            if (isStarted && isRunning) {
+                setBitmap()
+                readView.invalidate()
             }
         }
     }
