@@ -21,11 +21,17 @@ import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.SvgUtils
 import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.min
 
 object ImageProvider {
@@ -48,6 +54,20 @@ object ImageProvider {
         }
 
     val bitmapLruCache = BitmapLruCache()
+
+    /**
+     * 同图解码去重 + 多观察者通知; key = vFile.absolutePath, value = 解码完成后要触发的 invalidate 回调.
+     * 用 ConcurrentHashMap 自身原子操作保证 compute/remove 的可见性, 不再额外加锁.
+     */
+    private val pendingDecodeCallbacks = ConcurrentHashMap<String, MutableList<() -> Unit>>()
+
+    /**
+     * 后台解码独立 scope, 限制并发避免 onDraw 触发的解码风暴打满 CPU.
+     * limitedParallelism(2) 在 Default 池上借线程, 与 IO 池隔离.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val decodeDispatcher = Dispatchers.Default.limitedParallelism(2)
+    private val decodeScope = CoroutineScope(SupervisorJob() + decodeDispatcher)
 
     class BitmapLruCache : LruCache<String, Bitmap>(cacheSize) {
 
@@ -210,6 +230,60 @@ object ImageProvider {
             //错误图片占位,防止重复获取
             put(vFile.absolutePath, errorBitmap)
         }.getOrDefault(errorBitmap)
+    }
+
+    /**
+     * 非阻塞获取 bitmap, 用于 onDraw 路径.
+     * - 缓存命中: 同步返回 bitmap
+     * - 文件缺失: 同步返回 errorBitmap (与 [getImage] 一致)
+     * - 缓存未命中: 立即返回 null, 后台解码完成后触发 [onDecoded] 回调
+     *   (典型用法: ContentTextView { it.postInvalidate() })
+     *
+     * 同一张图并发触发时合并解码任务, 多个调用方都会收到自己的回调.
+     */
+    fun getImageNonBlocking(
+        book: Book,
+        src: String,
+        width: Int,
+        height: Int? = null,
+        onDecoded: () -> Unit
+    ): Bitmap? {
+        if (book.getUseReplaceRule() && src.isBlank()) {
+            book.setUseReplaceRule(false)
+            appCtx.toastOnUi(R.string.error_image_url_empty)
+        }
+        val vFile = BookHelp.getImage(book, src)
+        if (!vFile.exists()) return errorBitmap
+        val key = vFile.absolutePath
+        getNotRecycled(key)?.let { return it }
+
+        var needLaunch = false
+        pendingDecodeCallbacks.compute(key) { _, existing ->
+            if (existing == null) {
+                needLaunch = true
+                mutableListOf(onDecoded)
+            } else {
+                existing.add(onDecoded)
+                existing
+            }
+        }
+        if (needLaunch) {
+            decodeScope.launch {
+                val bitmap = runCatching {
+                    BitmapUtils.decodeBitmap(key, width, height)
+                        ?: SvgUtils.createBitmap(key, width, height)
+                        ?: throw NoStackTraceException(appCtx.getString(R.string.error_decode_bitmap))
+                }.onFailure {
+                    put(key, errorBitmap)
+                }.getOrDefault(errorBitmap)
+                if (bitmap !== errorBitmap) {
+                    put(key, bitmap)
+                }
+                val callbacks = pendingDecodeCallbacks.remove(key)
+                callbacks?.forEach { runCatching { it.invoke() } }
+            }
+        }
+        return null
     }
 
     fun clear() {

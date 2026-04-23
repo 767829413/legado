@@ -27,12 +27,14 @@ data class ImageColumn(
 
         val height = textLine.height
 
-        val bitmap = ImageProvider.getImage(
+        // 非阻塞: 缓存未命中时本帧不画图, 后台解码完成会 postInvalidate 触发重绘.
+        // 避免在主线程做 BitmapFactory.decodeFile / SvgUtils.createBitmap 导致翻页卡顿.
+        val bitmap = ImageProvider.getImageNonBlocking(
             book,
             src,
             (end - start).toInt(),
             height.toInt()
-        )
+        ) { view.postInvalidate() } ?: return
 
         val rectF = if (textLine.isImage) {
             RectF(start, 0f, end, height)
