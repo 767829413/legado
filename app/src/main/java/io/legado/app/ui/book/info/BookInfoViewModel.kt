@@ -241,14 +241,11 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                 .onSuccess(IO) {
                     if (inBookshelf) {
                         appDb.bookDao.replace(oldBook, book)
-                        /**
-                         * runPreUpdateJs 有可能会修改 book 的 bookUrl
-                         */
-                        if (oldBook.bookUrl != book.bookUrl) {
-                            BookHelp.updateCacheFolder(oldBook, book)
-                        }
                         appDb.bookChapterDao.delByBook(oldBook.bookUrl)
                         appDb.bookChapterDao.insert(*it.toTypedArray())
+                        // runPreUpdateJs 有可能会修改 book 的 bookUrl; 不论变没变, 章节列表
+                        // 已被替换, 都要顺手清掉目录里对不上新列表的孤儿章节文件.
+                        BookHelp.updateCacheFolder(oldBook, book, it)
                         ReadBook.onChapterListUpdated(book)
                     }
                     bookData.postValue(book)
