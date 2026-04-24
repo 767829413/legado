@@ -72,12 +72,24 @@
         android:visibility="gone"
         app:layout_constraintTop_toBottomOf="@id/tv_download" />
 
+    <!--
+        下载进度条: 始终占位 (invisible) 避免下载开始/结束时 item 高度跳变.
+        高度收紧到 3dp + 无 marginTop, 静止状态视觉上几乎看不见, 跑起来时即为细横条.
+    -->
+    <io.legado.app.lib.theme.view.ThemeProgressBar
+        android:id="@+id/progress_download"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:visibility="invisible"
+        app:layout_constraintTop_toBottomOf="@id/tv_download" />
+
     <io.legado.app.lib.theme.view.ThemeProgressBar
         android:id="@+id/progress_export"
         style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:visibility="gone"
-        app:layout_constraintTop_toBottomOf="@id/tv_download" />
+        app:layout_constraintTop_toBottomOf="@id/progress_download" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

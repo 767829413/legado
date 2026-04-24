@@ -84,6 +84,12 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
     private val groupList: ArrayList<BookGroup> = arrayListOf()
     private var groupId: Long = -1
 
+    /**
+     * 高频缓存事件去抖: 200ms 内同一 bookUrl 只触发一次 notifyItemChanged.
+     * 所有事件回调都在主线程, 因此无需额外同步.
+     */
+    private val refreshThrottle = BookRefreshThrottle()
+
     private val exportDir = registerForActivityResult(HandleFileContract()) { result ->
         var isReadyPath = false
         var dirPath = ""
@@ -281,26 +287,23 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
         }
     }
 
-    private fun notifyItemChanged(bookUrl: String) {
-        kotlin.runCatching {
-            adapter.getItems().forEachIndexed { index, book ->
-                if (bookUrl == book.bookUrl) {
-                    adapter.notifyItemChanged(index, true)
-                    return
-                }
-            }
-        }
+    /**
+     * 调度刷新指定 bookUrl, 空 url 直接丢弃, 短时间多次调用合并为一次.
+     */
+    private fun scheduleItemChanged(bookUrl: String?) {
+        if (bookUrl.isNullOrEmpty()) return
+        refreshThrottle.schedule(bookUrl)
     }
 
     override fun observeLiveBus() {
         viewModel.upAdapterLiveData.observe(this) {
-            notifyItemChanged(it)
+            scheduleItemChanged(it)
         }
         observeEvent<String>(EventBus.EXPORT_BOOK) {
-            notifyItemChanged(it)
+            scheduleItemChanged(it)
         }
         observeEvent<String>(EventBus.UP_DOWNLOAD) {
-            notifyItemChanged(it)
+            scheduleItemChanged(it)
         }
         observeEvent<String>(EventBus.UP_DOWNLOAD_STATE) {
             if (!CacheBook.isRun) {
@@ -319,8 +322,48 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
         }
         observeEvent<Pair<Book, BookChapter>>(EventBus.SAVE_CONTENT) { (book, chapter) ->
             viewModel.cacheChapters[book.bookUrl]?.add(chapter.url)
-            notifyItemChanged(book.bookUrl)
+            scheduleItemChanged(book.bookUrl)
         }
+    }
+
+    override fun onDestroy() {
+        // 先撤销自己投递在 main handler 上的延迟任务, 再 super; super 之后访问 binding/adapter 是踩在
+        // BaseActivity 的隐式约定上, 不安全.
+        refreshThrottle.cancel()
+        super.onDestroy()
+    }
+
+    /**
+     * 主线程事件去抖工具:
+     * - 同一个 200ms 窗口内的多次 schedule(bookUrl) 合并为一次 notifyItemChanged.
+     * - 仅在主线程调用, 不需要额外加锁.
+     */
+    private inner class BookRefreshThrottle {
+
+        private val pending = LinkedHashSet<String>()
+        private val flush = Runnable {
+            if (pending.isEmpty()) return@Runnable
+            val snapshot = pending.toList()
+            pending.clear()
+            snapshot.forEach { adapter.notifyBookChanged(it) }
+        }
+
+        fun schedule(bookUrl: String) {
+            val needPost = pending.isEmpty()
+            pending.add(bookUrl)
+            if (needPost) {
+                binding.recyclerView.postDelayed(flush, REFRESH_INTERVAL_MS)
+            }
+        }
+
+        fun cancel() {
+            binding.recyclerView.removeCallbacks(flush)
+            pending.clear()
+        }
+    }
+
+    companion object {
+        private const val REFRESH_INTERVAL_MS = 200L
     }
 
     override fun export(position: Int) {
@@ -567,8 +610,22 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
         }
     }
 
-    override val cacheChapters: HashMap<String, HashSet<String>>
+    override val cacheChapters: Map<String, MutableSet<String>>
         get() = viewModel.cacheChapters
+
+    /**
+     * Adapter 不直读 CacheBook 单例; 由 Activity 把 model 运行态翻成 UI 用的 DownloadState.
+     * Idle 包含 isStop() (含 isStopped 与 完成态), Preparing 表示拉目录中,
+     * Running 覆盖正在跑 + waitingRetry, 让"图标/文案/进度条"基于同一来源保持一致.
+     */
+    override fun downloadState(bookUrl: String): DownloadState {
+        val model = CacheBook.cacheBookMap[bookUrl] ?: return DownloadState.Idle
+        return when {
+            model.isStop() -> DownloadState.Idle
+            model.isLoading() -> DownloadState.Preparing
+            else -> DownloadState.Running
+        }
+    }
 
     override fun exportProgress(bookUrl: String): Int? {
         return ExportBookService.exportProgress[bookUrl]
