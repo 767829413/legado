@@ -77,21 +77,69 @@ object BookHelp {
         FileUtils.delete(filePath)
     }
 
-    fun updateCacheFolder(oldBook: Book, newBook: Book) {
+    /**
+     * 换源/章节列表替换时调用. 两件事:
+     *  1. 若 bookUrl 变了 (folder name 由 bookUrl MD5 决定), 把旧目录整体 move 到新目录.
+     *  2. 若提供了 newChapters, 顺手清掉新目录下不在 newChapters 里的孤儿章节文件.
+     *
+     * 不传 newChapters 时只 move 不清理 (e.g. BookInfoEditActivity 里手工编辑书信息但不换章节列表).
+     */
+    fun updateCacheFolder(
+        oldBook: Book,
+        newBook: Book,
+        newChapters: List<BookChapter>? = null
+    ) {
         val oldFolderName = oldBook.getFolderNameNoCache()
         val newFolderName = newBook.getFolderNameNoCache()
-        if (oldFolderName == newFolderName) return
-        val oldFolderPath = FileUtils.getPath(
-            downloadDir,
-            cacheFolderName,
-            oldFolderName
-        )
-        val newFolderPath = FileUtils.getPath(
-            downloadDir,
-            cacheFolderName,
-            newFolderName
-        )
-        FileUtils.move(oldFolderPath, newFolderPath)
+        if (oldFolderName != newFolderName) {
+            val oldFolderPath = FileUtils.getPath(
+                downloadDir,
+                cacheFolderName,
+                oldFolderName
+            )
+            val newFolderPath = FileUtils.getPath(
+                downloadDir,
+                cacheFolderName,
+                newFolderName
+            )
+            FileUtils.move(oldFolderPath, newFolderPath)
+        }
+        if (newChapters != null) {
+            pruneOrphanChapterFiles(newBook, newChapters)
+        }
+    }
+
+    /**
+     * 删掉书目录下不在 validChapters 里的章节正文文件 (.nb).
+     * 文件名规则 `<index>-<MD5(title)>.nb` (见 BookChapter.getFileName), 换源/同源更新章节列表后,
+     * 上一份章节文件名可能整体或部分对不上新列表, 不清就会永远残留, 长期累积浪费磁盘.
+     *
+     * 范围限制: 只清根目录下的 .nb 文本文件, 不动 images / font / epub 等子目录 ——
+     * 它们与章节是多对多关系, 单凭文件名判断会误删. 后续如要彻底治理图片孤儿,
+     * 需基于 "新章节内容里引用的 src 集合" 比对, 那是另一个工程.
+     *
+     * 故意用 getFolderNameNoCache(): Book.getFolderName() 会缓存结果, 若 runPreUpdateJs
+     * 在本次调用链早期已修改过 bookUrl, 缓存里可能留着旧 URL 的 MD5, 扫到的就是已被 move
+     * 走的旧目录, prune 什么都清不掉. updateCacheFolder 比较目录名时也是用 NoCache 版本,
+     * 此处保持一致.
+     *
+     * 性能: validChapters 一般几千级, HashSet 占用百 KB; listFiles 一次磁盘 IO,
+     * 调用方都在 IO 协程上下文中, 无主线程影响.
+     */
+    private fun pruneOrphanChapterFiles(book: Book, validChapters: List<BookChapter>) {
+        val folder = downloadDir.getFile(cacheFolderName, book.getFolderNameNoCache())
+        if (!folder.exists() || !folder.isDirectory) return
+        val validNames = HashSet<String>(validChapters.size)
+        validChapters.forEach { validNames.add(it.getFileName()) }
+        folder.listFiles()?.forEach { file ->
+            if (file.isFile && file.name.endsWith(".nb") && !validNames.contains(file.name)) {
+                // File.delete() 失败静默返回 false (权限/句柄占用); 不 log 的话下次扫仍会命中,
+                // 但用户看不到原因. 丢到 AppLog 便于定位, 不抛异常避免打断换源流程.
+                if (!file.delete()) {
+                    AppLog.put("pruneOrphanChapterFiles: 删除失败 ${file.name}")
+                }
+            }
+        }
     }
 
     /**
