@@ -7,7 +7,6 @@ import io.legado.app.R
 import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
 import io.legado.app.data.appDb
@@ -17,7 +16,6 @@ import io.legado.app.model.CacheBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.cache.CacheActivity
 import io.legado.app.utils.activityPendingIntent
-import io.legado.app.utils.postEvent
 import io.legado.app.utils.servicePendingIntent
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -46,6 +44,7 @@ class CacheBookService : BaseService() {
         Executors.newFixedThreadPool(min(threadCount, AppConst.MAX_THREAD)).asCoroutineDispatcher()
     private var downloadJob: Job? = null
     private var notificationContent = appCtx.getString(R.string.service_starting)
+    private var lastNotifiedContent: String? = null
     private var mutex = Mutex()
     private val notificationBuilder by lazy {
         val builder = NotificationCompat.Builder(this, AppConst.channelIdDownload)
@@ -65,12 +64,13 @@ class CacheBookService : BaseService() {
     override fun onCreate() {
         super.onCreate()
         isRun = true
+        // 1s 心跳: 仅在通知文案真正变化时刷新, 列表 UI 由 CacheBookModel 的 per-bookUrl 事件驱动,
+        // 不再广播空 UP_DOWNLOAD, 避免列表无差别全量重绘.
         lifecycleScope.launch {
             while (isActive) {
                 delay(1000)
                 notificationContent = CacheBook.downloadSummary
                 upCacheBookNotification()
-                postEvent(EventBus.UP_DOWNLOAD, "")
             }
         }
     }
@@ -94,9 +94,10 @@ class CacheBookService : BaseService() {
     override fun onDestroy() {
         isRun = false
         cachePool.close()
+        // CacheBook.close() 内部会对每本书 stop() 并发出 per-bookUrl 的 UP_DOWNLOAD 事件,
+        // 这里不再额外广播空事件.
         CacheBook.close()
         super.onDestroy()
-        postEvent(EventBus.UP_DOWNLOAD, "")
     }
 
     private fun addDownloadData(bookUrl: String?, start: Int, end: Int) {
@@ -150,8 +151,8 @@ class CacheBookService : BaseService() {
     }
 
     private fun removeDownload(bookUrl: String?) {
+        // model.stop() 内部已 postEvent UP_DOWNLOAD(book.bookUrl), 无需再补一次空事件
         CacheBook.cacheBookMap[bookUrl]?.stop()
-        postEvent(EventBus.UP_DOWNLOAD, "")
         if (downloadJob == null && CacheBook.isRun) {
             download()
             return
@@ -170,6 +171,8 @@ class CacheBookService : BaseService() {
     }
 
     private fun upCacheBookNotification() {
+        if (notificationContent == lastNotifiedContent) return
+        lastNotifiedContent = notificationContent
         notificationBuilder.setContentText(notificationContent)
         val notification = notificationBuilder.build()
         notificationManager.notify(NotificationId.CacheBookService, notification)

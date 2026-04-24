@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.apache.commons.text.similarity.JaccardSimilarity
 import splitties.init.appCtx
@@ -66,6 +67,9 @@ object BookHelp {
         FileUtils.delete(
             FileUtils.getPath(downloadDir, cacheFolderName)
         )
+        // 整库缓存被清, 同步丢弃所有 per-src Mutex, 避免长期运行后驻留;
+        // 只清整库时执行 —— 单本书的 clearCache(book) 不动它, 因为 src 是绝对 URL 可能被多本书共用.
+        downloadImages.clear()
     }
 
     fun clearCache(book: Book) {
@@ -225,39 +229,47 @@ object BookHelp {
         if (isImageExist(book, src)) {
             return
         }
-        val mutex = synchronized(this) {
-            downloadImages.getOrPut(src) { Mutex() }
-        }
-        mutex.lock()
-        try {
+        // 用 ConcurrentHashMap.computeIfAbsent 原子获取 per-src Mutex,
+        // 避免原本 "synchronized + getOrPut + finally remove" 路径下的竞态:
+        // 持锁线程在 finally 中先 remove 再 unlock, 新到达的线程会创建新的 mutex 与等待者并发下载.
+        val mutex = downloadImages.computeIfAbsent(src) { Mutex() }
+        var success = false
+        mutex.withLock {
             if (isImageExist(book, src)) {
-                return
+                success = true
+                return@withLock
             }
-            val analyzeUrl = AnalyzeUrl(
-                src, source = bookSource, coroutineContext = coroutineContext
-            )
-            val bytes = analyzeUrl.getByteArrayAwait()
-            //某些图片被加密，需要进一步解密
-            runScriptWithContext {
-                ImageUtils.decode(
-                    src, bytes, isCover = false, bookSource, book
+            try {
+                val analyzeUrl = AnalyzeUrl(
+                    src, source = bookSource, coroutineContext = coroutineContext
                 )
-            }?.let {
-                if (!checkImage(it)) {
-                    // 如果部分图片失效，每次进入正文都会花很长时间再次获取图片数据
-                    // 所以无论如何都要将数据写入到文件里
-                    // throw NoStackTraceException("数据异常")
-                    AppLog.put("${book.name} ${chapter?.title} 图片 $src 下载错误 数据异常")
+                val bytes = analyzeUrl.getByteArrayAwait()
+                //某些图片被加密，需要进一步解密
+                runScriptWithContext {
+                    ImageUtils.decode(
+                        src, bytes, isCover = false, bookSource, book
+                    )
+                }?.let {
+                    if (!checkImage(it)) {
+                        // 如果部分图片失效，每次进入正文都会花很长时间再次获取图片数据
+                        // 所以无论如何都要将数据写入到文件里
+                        // throw NoStackTraceException("数据异常")
+                        AppLog.put("${book.name} ${chapter?.title} 图片 $src 下载错误 数据异常")
+                    }
+                    writeImage(book, src, it)
+                    success = true
                 }
-                writeImage(book, src, it)
+            } catch (e: Exception) {
+                coroutineContext.ensureActive()
+                val msg = "${book.name} ${chapter?.title} 图片 $src 下载失败\n${e.localizedMessage}"
+                AppLog.put(msg, e)
             }
-        } catch (e: Exception) {
-            coroutineContext.ensureActive()
-            val msg = "${book.name} ${chapter?.title} 图片 $src 下载失败\n${e.localizedMessage}"
-            AppLog.put(msg, e)
-        } finally {
-            downloadImages.remove(src)
-            mutex.unlock()
+        }
+        // 仅在确认成功时丢弃 Mutex: 后续 saveImage(src) 会被入口的 isImageExist() 早返, 不再用到它.
+        // 失败/解码返回 null 时保留 Mutex, 让重试继续走串行, 避免并发重复请求同一张坏图.
+        // remove(key, value) 的 CAS 语义保证不会误删别的线程刚 putIfAbsent 的新 Mutex.
+        if (success) {
+            downloadImages.remove(src, mutex)
         }
     }
 

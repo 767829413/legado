@@ -221,6 +221,8 @@
     <string name="download_cancel">取消下載</string>
     <string name="no_download">暫無任務</string>
     <string name="download_count">已下載 %1$d/%2$d</string>
+    <string name="download_progress">下載中 %1$d/%2$d</string>
+    <string name="download_preparing">準備下載…</string>
     <string name="import_select_book">匯入選擇書籍</string>
     <string name="threads_num_title">更新和搜尋執行緒數，太多會卡頓</string>
     <string name="change_icon">切換圖示</string>

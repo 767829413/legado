@@ -225,6 +225,9 @@ object CacheBook {
         @Synchronized
         fun setLoading() {
             isLoading = true
+            // 让 UI 立刻进入 "准备下载…" 状态; 否则在拉取目录的几秒里用户看不到任何反馈.
+            // 配合 CacheActivity 的 200ms throttle 不会引起额外重绘.
+            postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
         }
 
         @Synchronized
@@ -299,6 +302,21 @@ object CacheBook {
             if (!isStopped) waitDownloadSet.add(index)
         }
 
+        /**
+         * 释放 download() 锁外阶段预占但最终无需下载的槽位 (本地已有内容 / 卷标题 / 章节缺失).
+         * 与 onSuccess/onError 的差别: 不写入 successDownloadSet/errorDownloadMap.
+         * 仍需 postEvent, 否则整本书章节大都本地已存在时, UI 的等待/正在下载计数会迟迟不更新
+         * (主线程 200ms throttle 会自动合并相邻事件, 不会造成 UI 抖动).
+         */
+        @Synchronized
+        private fun releaseReservedSlot(index: Int) {
+            onDownloadSet.remove(index)
+            if (!isLoading && waitDownloadSet.isEmpty() && onDownloadSet.isEmpty()) {
+                cacheBookMap.remove(book.bookUrl)
+            }
+            postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
+        }
+
         @Synchronized
         private fun onFinally() {
             if (waitDownloadSet.isEmpty() && onDownloadSet.isEmpty()) {
@@ -308,37 +326,48 @@ object CacheBook {
         }
 
         /**
-         * 从待下载列表内取第一条下载
+         * 从待下载列表内取第一条下载.
+         *
+         * 锁定原则: 仅在状态变更(set 操作 / cacheBookMap 维护)时持有 monitor;
+         * DB 查询、文件检查等 IO 在锁外进行, 避免把同一本书的并发下载工人串行化.
+         * 同时通过把 chapterIndex "预占"到 onDownloadSet, 防止其他工人重复领取.
          */
-        @Synchronized
         fun download(scope: CoroutineScope, context: CoroutineContext) {
-            val chapterIndex = waitDownloadSet.firstOrNull()
-            if (chapterIndex == null) {
-                if (!isLoading && onDownloadSet.isEmpty()) {
-                    cacheBookMap.remove(book.bookUrl)
+            val chapterIndex: Int = synchronized(this) {
+                val next = waitDownloadSet.firstOrNull()
+                if (next == null) {
+                    if (!isLoading && onDownloadSet.isEmpty()) {
+                        cacheBookMap.remove(book.bookUrl)
+                    }
+                    return
                 }
-                return
+                // 已有别的工人领走, 放弃即可
+                if (onDownloadSet.contains(next)) {
+                    waitDownloadSet.remove(next)
+                    return
+                }
+                // 预占: 避免锁外做 IO 期间被其他工人重复领取
+                waitDownloadSet.remove(next)
+                onDownloadSet.add(next)
+                next
             }
-            if (onDownloadSet.contains(chapterIndex)) {
-                waitDownloadSet.remove(chapterIndex)
-                return
-            }
-            val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, chapterIndex) ?: let {
-                waitDownloadSet.remove(chapterIndex)
+
+            // 下面任何"提前结束"分支都必须释放预占, 否则会让计数器永远累加
+            val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, chapterIndex)
+            if (chapter == null) {
+                releaseReservedSlot(chapterIndex)
                 return
             }
             if (chapter.isVolume) {
                 /** 修正下载计数 */
                 postEvent(EventBus.SAVE_CONTENT, Pair(book, chapter))
-                waitDownloadSet.remove(chapterIndex)
+                releaseReservedSlot(chapterIndex)
                 return
             }
             if (BookHelp.hasImageContent(book, chapter)) {
-                waitDownloadSet.remove(chapterIndex)
+                releaseReservedSlot(chapterIndex)
                 return
             }
-            waitDownloadSet.remove(chapterIndex)
-            onDownloadSet.add(chapterIndex)
             if (BookHelp.hasContent(book, chapter)) {
                 Coroutine.async(scope, context, executeContext = context) {
                     BookHelp.getContent(book, chapter)?.let {
