@@ -288,6 +288,12 @@ object ImageProvider {
 
     fun clear() {
         bitmapLruCache.evictAll()
+        // 也清待解码回调表: 闭包形如 { it.postInvalidate() } (见 ContentTextView), 强引用 View → Activity.
+        // 正常路径解码完成会自行 remove(key); 但用户在解码进行中退出阅读页时, 残留回调要等
+        // 后台 launch 跑完才被 remove, 期间整个 Activity 被钉住等磁盘 IO, 高峰下表现为
+        // "退出阅读后内存迟迟不回落". 这里主动清掉, 已 dispatch 的 launch 完成后 remove(key)
+        // 拿到 null 是 no-op; 解码出来的 bitmap 仍写入 LRU, 下次回到该页直接命中, 不影响显示.
+        pendingDecodeCallbacks.clear()
     }
 
 }

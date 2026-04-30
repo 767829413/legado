@@ -222,7 +222,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
                         appDb.bookChapterDao.delByBook(oldBook.bookUrl)
                         appDb.bookChapterDao.insert(*cList.toTypedArray())
                         // 章节列表已替换, 同源/换源都顺手清掉目录里对不上的孤儿章节.
-                        BookHelp.updateCacheFolder(oldBook, book, cList)
+                        BookHelp.syncCacheToChapterList(oldBook, book, cList)
                         ReadBook.onChapterListUpdated(book)
                         return true
                     }.onFailure {

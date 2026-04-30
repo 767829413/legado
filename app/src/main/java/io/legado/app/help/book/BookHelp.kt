@@ -84,7 +84,7 @@ object BookHelp {
      *
      * 不传 newChapters 时只 move 不清理 (e.g. BookInfoEditActivity 里手工编辑书信息但不换章节列表).
      */
-    fun updateCacheFolder(
+    fun syncCacheToChapterList(
         oldBook: Book,
         newBook: Book,
         newChapters: List<BookChapter>? = null
@@ -120,8 +120,8 @@ object BookHelp {
      *
      * 故意用 getFolderNameNoCache(): Book.getFolderName() 会缓存结果, 若 runPreUpdateJs
      * 在本次调用链早期已修改过 bookUrl, 缓存里可能留着旧 URL 的 MD5, 扫到的就是已被 move
-     * 走的旧目录, prune 什么都清不掉. updateCacheFolder 比较目录名时也是用 NoCache 版本,
-     * 此处保持一致.
+     * 走的旧目录, prune 什么都清不掉. syncCacheToChapterList 上面比较目录名时也是用 NoCache
+     * 版本, 此处保持一致.
      *
      * 性能: validChapters 一般几千级, HashSet 占用百 KB; listFiles 一次磁盘 IO,
      * 调用方都在 IO 协程上下文中, 无主线程影响.
@@ -281,42 +281,41 @@ object BookHelp {
         // 避免原本 "synchronized + getOrPut + finally remove" 路径下的竞态:
         // 持锁线程在 finally 中先 remove 再 unlock, 新到达的线程会创建新的 mutex 与等待者并发下载.
         val mutex = downloadImages.computeIfAbsent(src) { Mutex() }
-        var success = false
-        mutex.withLock {
-            if (isImageExist(book, src)) {
-                success = true
-                return@withLock
-            }
-            try {
-                val analyzeUrl = AnalyzeUrl(
-                    src, source = bookSource, coroutineContext = coroutineContext
-                )
-                val bytes = analyzeUrl.getByteArrayAwait()
-                //某些图片被加密，需要进一步解密
-                runScriptWithContext {
-                    ImageUtils.decode(
-                        src, bytes, isCover = false, bookSource, book
+        try {
+            mutex.withLock {
+                if (isImageExist(book, src)) return@withLock
+                try {
+                    val analyzeUrl = AnalyzeUrl(
+                        src, source = bookSource, coroutineContext = coroutineContext
                     )
-                }?.let {
-                    if (!checkImage(it)) {
-                        // 如果部分图片失效，每次进入正文都会花很长时间再次获取图片数据
-                        // 所以无论如何都要将数据写入到文件里
-                        // throw NoStackTraceException("数据异常")
-                        AppLog.put("${book.name} ${chapter?.title} 图片 $src 下载错误 数据异常")
+                    val bytes = analyzeUrl.getByteArrayAwait()
+                    //某些图片被加密，需要进一步解密
+                    runScriptWithContext {
+                        ImageUtils.decode(
+                            src, bytes, isCover = false, bookSource, book
+                        )
+                    }?.let {
+                        if (!checkImage(it)) {
+                            // 如果部分图片失效，每次进入正文都会花很长时间再次获取图片数据
+                            // 所以无论如何都要将数据写入到文件里
+                            // throw NoStackTraceException("数据异常")
+                            AppLog.put("${book.name} ${chapter?.title} 图片 $src 下载错误 数据异常")
+                        }
+                        writeImage(book, src, it)
                     }
-                    writeImage(book, src, it)
-                    success = true
+                } catch (e: Exception) {
+                    coroutineContext.ensureActive()
+                    val msg = "${book.name} ${chapter?.title} 图片 $src 下载失败\n${e.localizedMessage}"
+                    AppLog.put(msg, e)
                 }
-            } catch (e: Exception) {
-                coroutineContext.ensureActive()
-                val msg = "${book.name} ${chapter?.title} 图片 $src 下载失败\n${e.localizedMessage}"
-                AppLog.put(msg, e)
             }
-        }
-        // 仅在确认成功时丢弃 Mutex: 后续 saveImage(src) 会被入口的 isImageExist() 早返, 不再用到它.
-        // 失败/解码返回 null 时保留 Mutex, 让重试继续走串行, 避免并发重复请求同一张坏图.
-        // remove(key, value) 的 CAS 语义保证不会误删别的线程刚 putIfAbsent 的新 Mutex.
-        if (success) {
+        } finally {
+            // 不论成功失败都丢弃 Mutex. 之前为了 "失败重试串行化" 故意保留, 但实测下:
+            // 1) CacheBook 对失败章节最多重试 3 次, 之后不再触发, 真坏图很少有人持续重试.
+            // 2) 长期追更碰到的累积坏图 URL 会按月级线性堆积 (每条目 ~200~300B), 永不释放
+            //    直到 clearCache(); 这才是真问题.
+            // 偶发并发重试同一坏图最多让两个线程各跑一次完整下载, 比起永久堆膨胀划算.
+            // remove(key, value) 的 CAS 语义保证不会误删别的线程刚 putIfAbsent 的新 Mutex.
             downloadImages.remove(src, mutex)
         }
     }
