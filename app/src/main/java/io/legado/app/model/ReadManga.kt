@@ -383,6 +383,14 @@ object ReadManga : CoroutineScope by MainScope() {
                 upToc()
                 return@execute
             }
+            // 与 ReadBook.preDownload 同步: 裁掉 cur ± preDownloadNum 范围外的索引,
+            // 避免长篇漫画长读后 downloadedChapters / downloadFailChapters 无界增长。
+            val cur = durChapterIndex
+            val keep = AppConfig.preDownloadNum.coerceAtLeast(2)
+            synchronized(this) {
+                downloadedChapters.removeAll { it < cur - keep || it > cur + keep }
+                downloadFailChapters.keys.removeAll { it < cur - keep || it > cur + keep }
+            }
             preDownloadTask?.cancel()
             preDownloadTask = launch(IO) {
                 //预下载

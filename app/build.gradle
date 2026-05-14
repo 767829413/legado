@@ -100,6 +100,14 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro', 'cronet-proguard-rules.pro'
+            // 关闭 debuggable: ART 走 AOT 优化, 且 AGP 据此把 BuildConfig.DEBUG 设为 false,
+            // 一次性关闭代码里所有 if (BuildConfig.DEBUG) 走的耗性能分支:
+            //   App.kt: kotlinx.coroutines.debug=on (协程调试栈整合)
+            //   AppLog.put: 每条日志 Thread.currentThread().stackTrace
+            //   LiveEventBus enableLogger / Glide 全量 log
+            //   ToastUtils: 不复用 Toast 实例
+            // 代价: 装不了调试器, 个人自用包可接受。
+            debuggable false
         }
     }
     //noinspection GrDeprecatedAPIUsage

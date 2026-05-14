@@ -9,6 +9,7 @@ import android.view.View
 import io.legado.app.R
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.config.AppConfig
+import io.legado.app.model.ImageProvider
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.page.delegate.PageDelegate
 import io.legado.app.ui.book.read.page.entities.TextLine
@@ -90,6 +91,12 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         if (!isMainView) return
         ChapterProvider.upViewSize(w, h)
         textPage.format()
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        // detach 后再 postInvalidate 无意义, 清掉本 View 注册的待解码回调, 避免无效重绘.
+        ImageProvider.removeDecodeCallbacksOf(this)
     }
 
     override fun onDraw(canvas: Canvas) {

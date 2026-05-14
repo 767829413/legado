@@ -29,11 +29,13 @@ data class ImageColumn(
 
         // 非阻塞: 缓存未命中时本帧不画图, 后台解码完成会 postInvalidate 触发重绘.
         // 避免在主线程做 BitmapFactory.decodeFile / SvgUtils.createBitmap 导致翻页卡顿.
+        // owner = view: View detach 时清掉关联回调, 避免对已离屏 View 触发无效 postInvalidate.
         val bitmap = ImageProvider.getImageNonBlocking(
             book,
             src,
             (end - start).toInt(),
-            height.toInt()
+            height.toInt(),
+            view,
         ) { view.postInvalidate() } ?: return
 
         val rectF = if (textLine.isImage) {

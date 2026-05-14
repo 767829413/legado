@@ -110,6 +110,10 @@ object ReadBook : CoroutineScope by MainScope() {
         durChapterIndex = book.durChapterIndex
         durChapterPos = book.durChapterPos
         isLocalBook = book.isLocal
+        // 看图书/漫画时 ensureLruCacheSize 会把 Bitmap LRU 扩到最高 256MB; 切到纯文字书后
+        // 这个高位不会自动缩回, 增加 GC 压力。切书时主动缩回配置值; 新书若仍是图片书,
+        // 后续 ensureLruCacheSize 会再扩, 是 no-op。
+        ImageProvider.trimMemory()
         clearTextChapter()
         callBack?.upContent()
         callBack?.upMenuView()
@@ -952,6 +956,15 @@ object ReadBook : CoroutineScope by MainScope() {
             if (AppConfig.preDownloadNum < 2) {
                 upToc()
                 return@execute
+            }
+            // 长篇连载 (上万章) 在不切书的情况下 downloadedChapters 会一直累积。
+            // preDownload 只用 cur ± preDownloadNum 范围, 范围外的索引保留无意义;
+            // 即使裁掉, 文件仍在磁盘, downloadIndex 会先 hasContent 再 add 回 set。
+            val cur = durChapterIndex
+            val keep = AppConfig.preDownloadNum.coerceAtLeast(2)
+            synchronized(this) {
+                downloadedChapters.removeAll { it < cur - keep || it > cur + keep }
+                downloadFailChapters.keys.removeAll { it < cur - keep || it > cur + keep }
             }
             preDownloadTask?.cancel()
             preDownloadTask = launch(IO) {

@@ -56,10 +56,15 @@ object ImageProvider {
     val bitmapLruCache = BitmapLruCache()
 
     /**
-     * 同图解码去重 + 多观察者通知; key = vFile.absolutePath, value = 解码完成后要触发的 invalidate 回调.
+     * 同图解码去重 + 多观察者通知; key = vFile.absolutePath,
+     * value = 解码完成后要触发的 invalidate 回调列表, 每个 entry 带 owner 用于按 View 清理.
      * 用 ConcurrentHashMap 自身原子操作保证 compute/remove 的可见性, 不再额外加锁.
+     *
+     * owner: 注册回调的 View 实例; View detach 时调用 [removeDecodeCallbacksOf] 清掉自己,
+     * 避免快速翻页 / 退出阅读时残留回调对 View 触发无效 postInvalidate。
      */
-    private val pendingDecodeCallbacks = ConcurrentHashMap<String, MutableList<() -> Unit>>()
+    private val pendingDecodeCallbacks =
+        ConcurrentHashMap<String, MutableList<Pair<Any, () -> Unit>>>()
 
     /**
      * 后台解码独立 scope, 限制并发避免 onDraw 触发的解码风暴打满 CPU.
@@ -246,6 +251,7 @@ object ImageProvider {
         src: String,
         width: Int,
         height: Int? = null,
+        owner: Any,
         onDecoded: () -> Unit
     ): Bitmap? {
         if (book.getUseReplaceRule() && src.isBlank()) {
@@ -261,9 +267,9 @@ object ImageProvider {
         pendingDecodeCallbacks.compute(key) { _, existing ->
             if (existing == null) {
                 needLaunch = true
-                mutableListOf(onDecoded)
+                mutableListOf(owner to onDecoded)
             } else {
-                existing.add(onDecoded)
+                existing.add(owner to onDecoded)
                 existing
             }
         }
@@ -280,10 +286,27 @@ object ImageProvider {
                     put(key, bitmap)
                 }
                 val callbacks = pendingDecodeCallbacks.remove(key)
-                callbacks?.forEach { runCatching { it.invoke() } }
+                callbacks?.forEach { (_, cb) -> runCatching { cb.invoke() } }
             }
         }
         return null
+    }
+
+    /**
+     * View detach / 章节 recycle 时清掉 owner 注册的回调, 避免对已 detach 的 View
+     * 触发无效 postInvalidate。已 dispatch 的解码任务完成后 remove(key) 仍然安全。
+     */
+    fun removeDecodeCallbacksOf(owner: Any) {
+        val iterator = pendingDecodeCallbacks.entries.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            val list = entry.value
+            list.removeAll { it.first === owner }
+            if (list.isEmpty()) {
+                // 移除空 list 时用 remove(key, value) 防止与解码协程的 remove(key) 竞争误删新注册.
+                pendingDecodeCallbacks.remove(entry.key, list)
+            }
+        }
     }
 
     fun clear() {
